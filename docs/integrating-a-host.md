@@ -14,7 +14,11 @@ uses. It does four things:
    show the diffs, and call `apply` (or `remove`) only after they confirm.
 4. **Tell the person what is left**: show each client's `actions` (for
    example "restart the client") and `problems` (components that were left
-   alone, with the reason).
+   alone, with the reason). `actionCodes` gives one stable code per action
+   (`restart_client`, `new_session`, `reload_config`, `trust_hooks`,
+   `other`; see [result.schema.json](result.schema.json)), so the host can
+   show the step in its own words and language; fall back to the English
+   text for `other`.
 
 The host stays responsible for asking the person, for any account or trust
 step inside a client, and for deciding when to offer an update; the
@@ -70,10 +74,14 @@ const installer = createInstaller({
 const { clients } = await installer.status();
 const preview = await installer.plan(['claude-code']);
 const result = await installer.apply(['claude-code']); // after the person confirms
+if (result.partial) showProblems(result.problems); // [{ client, message }]
 ```
 
 Every failure rejects with an `Error` whose `code` is the installer or
-binding error code.
+binding error code. `unknown_outcome` means no answer arrived within
+`timeoutMs` (default 60000 ms): files may or may not have changed, so never
+retry `apply` or `remove` automatically; call `status` and let the person
+decide.
 
 ## Taking over an earlier setup
 
@@ -86,6 +94,14 @@ can let the installer take that setup over instead of reporting a conflict:
 - **Hooks**: `hooks.markers` works the same way for hook commands.
 - **Instructions**: set `instructions.begin` and `instructions.end` to the
   markers the old block used.
+- **Skills and plugins**: a directory without a receipt whose files already
+  equal the product's is adopted automatically. For an older or edited copy,
+  name a marker the product's copies always had, for example
+  `"adopt": { "file": "SKILL.md", "contains": "name: example-skill" }`; that
+  directory is then backed up and replaced.
+- **Options the person chose**: list them in `mcp.preserveArgs` (for
+  example `["--tool-profile"]`) and the value in the existing entry survives
+  every update.
 
 Map the host's own client names to the installer's IDs once (for example a
 host's `claude` setting becomes `claude-code`, `claude-desktop`, or both).

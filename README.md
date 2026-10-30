@@ -135,6 +135,17 @@ final plan = installer.plan(['claude-code']); // preview
 installer.apply(['claude-code']);             // after user confirmation
 ```
 
+In Node, `plan`, `apply` and `remove` resolve with
+`{ clients, partial, problems, extensionErrors }`: `partial: true` means the
+executable finished with exit code 2 and `problems` lists
+`{ client, message }` for every component left alone. Every failure rejects
+asynchronously with an `Error` carrying `code`. `timeoutMs` defaults to
+60000 (at most 600000); when it runs out the process is killed and the call
+rejects with `unknown_outcome`: files may or may not have changed, so the
+binding never retries, and a host should call `status` before offering to
+try again. `defaultExtensionsDirectory()` and
+`defaultBackupsDirectory(product)` return the shared paths.
+
 ## Status
 
 Each client's `state`:

@@ -111,6 +111,14 @@ final plan = installer.plan(['claude-code']); // 预览
 installer.apply(['claude-code']);             // 用户确认后
 ```
 
+在 Node 中，`plan`、`apply`、`remove` 返回
+`{ clients, partial, problems, extensionErrors }`：`partial: true` 表示可执行文件以
+退出码 2 结束，`problems` 以 `{ client, message }` 列出每个被跳过的组件。所有失败
+都以带 `code` 的 `Error` 异步拒绝。`timeoutMs` 默认 60000（最大 600000）；超时后
+进程被结束，调用以 `unknown_outcome` 拒绝：文件可能改了也可能没改，所以绑定从不
+自动重试，宿主应先调用 `status` 再让用户决定是否重试。
+`defaultExtensionsDirectory()`、`defaultBackupsDirectory(product)` 返回共享路径。
+
 ## 状态
 
 每个客户端的 `state`：

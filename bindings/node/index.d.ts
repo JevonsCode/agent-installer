@@ -67,26 +67,63 @@ export interface InstallerOptions {
   manifestPath: string;
   /** Values for the manifest's `{placeholders}`. */
   variables?: Record<string, string>;
-  /** Defaults to the shared per-user extension directory. */
+  /** Defaults to the shared per-user extension directory, `defaultExtensionsDirectory()`. */
   extensionsDir?: string;
-  /** Where originals are copied before a change. */
+  /** Where originals are copied before a change; defaults to `defaultBackupsDirectory(product)`. */
   backupsDir?: string;
+  /**
+   * How long one call may take, 1 to 600000 ms; default 60000. When it runs
+   * out the process is killed and the call rejects with `unknown_outcome`.
+   */
   timeoutMs?: number;
 }
 
-/** Rejections carry the installer error code. */
+/**
+ * Every failure rejects (never throws synchronously) with an Error whose
+ * `code` is an installer code (`invalid_manifest`, `unknown_client`, …) or a
+ * binding code: `invalid_arguments`, `invalid_timeout`, `unavailable` (the
+ * executable could not start), `invalid_response`, or `unknown_outcome`
+ * (no answer in time: files may or may not have changed, so never retry
+ * `apply` or `remove` automatically; call `status` first).
+ */
 export interface InstallerError extends Error {
   code: string;
+}
+
+/** What `plan`, `apply` and `remove` resolve with. */
+export interface ClientResults {
+  clients: ClientResult[];
+  /**
+   * True when the run finished but some components were left alone (the
+   * executable exited with 2); `problems` says which and why.
+   */
+  partial: boolean;
+  /** Every client's `problems`, flattened. */
+  problems: { client: string; message: string }[];
+  extensionErrors: ExtensionProblem[];
 }
 
 export interface Installer {
   scan(): Promise<{ clients: TargetScan[]; extensionErrors: ExtensionProblem[] }>;
   status(clients?: string[]): Promise<{ clients: ClientStatus[]; extensionErrors: ExtensionProblem[] }>;
   /** A dry run: returns the changes and diffs without writing. */
-  plan(clients: string[]): Promise<ClientResult[]>;
-  /** Writes; call only for clients the person selected. */
-  apply(clients: string[]): Promise<ClientResult[]>;
-  remove(clients: string[]): Promise<ClientResult[]>;
+  plan(clients: string[]): Promise<ClientResults>;
+  /** Writes; call only for clients the person selected. A partial run resolves with `partial: true`. */
+  apply(clients: string[]): Promise<ClientResults>;
+  remove(clients: string[]): Promise<ClientResults>;
 }
 
 export function createInstaller(options: InstallerOptions): Installer;
+
+/** The shared per-user extension directory, or undefined without a home directory. */
+export function defaultExtensionsDirectory(
+  env?: Record<string, string | undefined>,
+  platform?: string,
+): string | undefined;
+
+/** `agent-clients/backups/<product>` in the shared root, or undefined without a home directory. */
+export function defaultBackupsDirectory(
+  product: string,
+  env?: Record<string, string | undefined>,
+  platform?: string,
+): string | undefined;

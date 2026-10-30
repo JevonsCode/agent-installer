@@ -59,3 +59,15 @@
   `afterInstall` accepts `{ "code", "message" }` objects besides plain text
   (code `other`); `InstallTarget.afterInstall` is now a list of
   `AfterInstallAction` records.
+- Node binding: the spawn, timeout and parse logic is one `runNative`
+  helper shaped like the one in agent-session-launcher's binding.
+  - Breaking: `plan`, `apply` and `remove` resolve with
+    `{ clients, partial, problems, extensionErrors }` instead of the bare
+    client list. `partial: true` marks a run that finished with exit code 2;
+    `problems` lists `{ client, message }`.
+  - Every failure now rejects asynchronously with an `Error` carrying
+    `code`; `createInstaller` no longer throws for a relative path.
+  - `timeoutMs` (default 60000, at most 600000) is validated
+    (`invalid_timeout`); `unknown_outcome` is never retried automatically.
+  - New exports: `defaultExtensionsDirectory()` and
+    `defaultBackupsDirectory(product)`.
