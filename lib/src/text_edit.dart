@@ -13,6 +13,19 @@ abstract final class CodexToml {
   static bool hasServer(String? text, String name) =>
       _sections(text).any((s) => !s.array && s.name == 'mcp_servers.$name');
 
+  /// The text of `[mcp_servers.<name>]` and its sub-tables, or null.
+  static String? serverText(String? text, String name) {
+    final String base = 'mcp_servers.$name';
+    final List<_Section> found = <_Section>[
+      for (final _Section s in _sections(text))
+        if (!s.array && (s.name == base || (s.name ?? '').startsWith('$base.')))
+          s,
+    ];
+    return found.isEmpty
+        ? null
+        : found.expand((_Section s) => s.lines).join('\n');
+  }
+
   /// Replaces the body of `[mcp_servers.<name>]`, keeping its sub-tables, or
   /// appends the table.
   static String setServer(

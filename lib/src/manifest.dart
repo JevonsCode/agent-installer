@@ -5,7 +5,14 @@ import 'targets.dart';
 
 /// The MCP server a product registers.
 final class McpSpec {
-  const McpSpec(this.name, this.command, this.args, this.env, this.extra);
+  const McpSpec(
+    this.name,
+    this.command,
+    this.args,
+    this.env,
+    this.extra, {
+    this.markers = const <String>[],
+  });
   final String name;
   final String command;
   final List<String> args;
@@ -13,6 +20,15 @@ final class McpSpec {
 
   /// Additional client-specific fields, e.g. Codex `startup_timeout_sec`.
   final Map<String, Object?> extra;
+
+  /// Text in an entry's command or URL that shows it is the product's own.
+  /// A same-name entry without it belongs to someone else.
+  final List<String> markers;
+
+  McpSpec withMarkers(List<String> value) =>
+      McpSpec(name, command, args, env, extra, markers: value);
+
+  bool isOurs(String entryText) => markers.any(entryText.contains);
 }
 
 /// One lifecycle hook for a standard event.
@@ -197,6 +213,7 @@ final class ProductManifest {
         'args',
         'env',
         'extra',
+        'markers',
       }, '$path.mcp');
       final String name = _text(m['name'], '$path.mcp.name', 64);
       if (!RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(name)) {
@@ -221,6 +238,13 @@ final class ProductManifest {
             e.key: sub(e.value, '$path.mcp.env.${e.key}'),
         },
         _extra(m['extra'], '$path.mcp.extra', vars),
+        markers: <String>[
+          for (final (int i, Object? v) in _list(
+            m['markers'],
+            '$path.mcp.markers',
+          ).indexed)
+            _text(v, '$path.mcp.markers[$i]', 128),
+        ],
       );
     }
 
@@ -290,6 +314,23 @@ final class ProductManifest {
           ),
         );
       }
+    }
+
+    if (mcp != null) {
+      // Without its own markers the MCP entry is known by the hook markers,
+      // or else by its command.
+      final List<String> own = mcp.markers.isNotEmpty
+          ? mcp.markers
+          : markers.isNotEmpty
+          ? markers
+          : <String>[mcp.command];
+      if (!own.any(<String>[mcp.command, ...mcp.args].join(' ').contains)) {
+        invalidManifest(
+          '$path.mcp',
+          'the command or args must contain one of the markers.',
+        );
+      }
+      mcp = mcp.withMarkers(own);
     }
 
     String? instructions;

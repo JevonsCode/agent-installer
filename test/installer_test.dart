@@ -391,7 +391,7 @@ void main() {
   test('existing entries keep added fields and drop transport fields', () {
     write(
       '.cursor/mcp.json',
-      '{"mcpServers":{"acme":{"url":"http://x","timeout":5}}}',
+      '{"mcpServers":{"acme":{"url":"http://localhost/acme_mcp","timeout":5}}}',
     );
     installer().apply(<String>['cursor']);
     expect(
@@ -401,6 +401,58 @@ void main() {
         'command': '/opt/acme/bin/acme_mcp',
         'args': <String>['--source', 'Cursor'],
       },
+    );
+  });
+
+  test('a same-name server without the marker is never taken over', () {
+    const String cursor = '{"mcpServers":{"acme":{"command":"other-tool"}}}\n';
+    write('.cursor/mcp.json', cursor);
+    const String toml = '[mcp_servers.acme]\ncommand = "other-tool"\n';
+    write('.codex/config.toml', toml);
+    final AgentInstaller i = installer();
+    for (final String id in <String>['cursor', 'codex']) {
+      expect(states(status(i, id))['mcp'], 'conflict');
+      expect(status(i, id).state, 'conflict');
+      final ClientResult applied = i.apply(<String>[id]).single;
+      expect(applied.problems, contains(contains('already named "acme"')));
+      i.remove(<String>[id]);
+    }
+    expect(read('.cursor/mcp.json'), cursor);
+    expect(read('.codex/config.toml'), startsWith(toml));
+  });
+
+  test('a hand-made entry with the marker is taken over', () {
+    write(
+      '.codex/config.toml',
+      '[mcp_servers.acme]\ncommand = "/usr/local/bin/acme_mcp"\nenabled = true\n',
+    );
+    final AgentInstaller i = installer();
+    expect(states(status(i, 'codex'))['mcp'], 'outdated');
+    i.apply(<String>['codex']);
+    expect(
+      read('.codex/config.toml'),
+      contains('command = "/opt/acme/bin/acme_mcp"'),
+    );
+    expect(read('.codex/config.toml'), contains('enabled = true'));
+    i.remove(<String>['codex']);
+    expect(
+      read('.codex/config.toml') ?? '',
+      isNot(contains('mcp_servers.acme')),
+    );
+  });
+
+  test('the MCP command must carry a marker', () {
+    expect(
+      () => acme(
+        override: <String, Object?>{
+          'mcp': <String, Object?>{
+            'name': 'acme',
+            'command': 'npx',
+            'markers': <String>['acme_mcp'],
+          },
+        },
+      ),
+      throwsA(isA<AgentInstallException>()),
     );
   });
 

@@ -7,7 +7,8 @@
   "mcp": {
     "name": "agent-installer-probe",
     "command": "{node}",
-    "args": ["{bundle}/probe-mcp.mjs", "--client", "{clientId}"]
+    "args": ["{bundle}/probe-mcp.mjs", "--client", "{clientId}"],
+    "markers": ["probe-mcp.mjs"]
   },
   "hooks": {
     "markers": ["probe-hook.mjs"],

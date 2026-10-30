@@ -49,7 +49,12 @@
         "command": { "type": "string" },
         "args": { "type": "array", "items": { "type": "string" } },
         "env": { "type": "object", "additionalProperties": { "type": "string" } },
-        "extra": { "type": "object", "additionalProperties": { "$ref": "#/$defs/scalar" } }
+        "extra": { "type": "object", "additionalProperties": { "$ref": "#/$defs/scalar" } },
+        "markers": {
+          "description": "Text in the command or URL that shows a same-name entry is this product's. Defaults to the hook markers, else the command.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+        }
       }
     },
     "hooks": {

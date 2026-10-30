@@ -141,6 +141,9 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
   另有 `{clientId}`、`{clientName}`。`${…}` 原样保留给客户端展开。未知占位符会报错。
 - **MCP**：`extra` 写入额外字段，例如 Codex 的 `startup_timeout_sec`。已有条目中用户
   添加的字段会保留，`url`、`headers`、`type` 等传输字段会被替换。
+  同名条目只有在命令、参数或 URL 中含有 `markers` 里的某段文字时才算本产品的；
+  否则报冲突，安装和卸载都不会动它。`markers` 默认沿用 Hook 的标记，没有 Hook 时用
+  命令本身。条目里不写额外的标识字段，因为部分客户端重写配置时会丢掉不认识的字段。
 - **Hook**：事件名统一为 `sessionStart`、`userPromptSubmit`、`stop`、`agentResponse`
   （带最终回复文字，目前只有 Cursor 的 `afterAgentResponse`）、`preCompact`，
   由客户端映射到自己的名称；客户端不支持的事件会跳过。命令是参数数组，按平台引用

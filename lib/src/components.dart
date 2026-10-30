@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'environment.dart';
@@ -71,13 +72,18 @@ ClientWork buildWork(
             'Both ${present.map(env.display).join(' and ')} exist; configure '
             '${target.name} by hand.';
       } else {
-        work.text.add(
-          _mcpPart(
-            present.isEmpty ? candidates.first : present.single,
-            file.format,
-            mcp,
-          ),
-        );
+        final String chosen = present.isEmpty
+            ? candidates.first
+            : present.single;
+        final String? existing = _existingMcp(chosen, file.format, mcp.name);
+        if (existing != null && !mcp.isOurs(existing)) {
+          // Same name, someone else's server: never replace or remove it.
+          work.blocked['mcp'] =
+              'Another MCP server is already named "${mcp.name}" in '
+              '${env.display(chosen)}; rename or remove it first.';
+        } else {
+          work.text.add(_mcpPart(chosen, file.format, mcp));
+        }
       }
     }
   }
@@ -171,6 +177,24 @@ ClientWork buildWork(
   directories('skills', target.skillsDir, product.skills);
   directories('plugin', target.pluginsDir, <DirectorySpec>[?product.plugin]);
   return work;
+}
+
+/// The existing entry named [name] as text, or null when there is none or
+/// the file cannot be read; the text part reports unreadable files.
+String? _existingMcp(String path, String format, String name) {
+  final File file = File(path);
+  if (!file.existsSync()) return null;
+  try {
+    final String text = file.readAsStringSync();
+    if (format == 'codex-toml') return CodexToml.serverText(text, name);
+    final Object? servers = _root(
+      text,
+    )[format == 'opencode-json' ? 'mcp' : 'mcpServers'];
+    final Object? entry = servers is Map ? servers[name] : null;
+    return entry == null ? null : jsonEncode(entry);
+  } on Object {
+    return null;
+  }
 }
 
 TextPart _mcpPart(String file, String format, McpSpec mcp) {
