@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent Installer product manifest",
+  "description": "What a product installs into agent clients. Strings in commands, environment values, extra fields and sources may use {placeholders} given by the host plus {clientId} and {clientName}; ${...} is left for the client.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "product", "name", "version"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "product": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "version": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "mcp": { "$ref": "#/$defs/mcp" },
+    "hooks": { "$ref": "#/$defs/hooks" },
+    "instructions": { "$ref": "#/$defs/instructions" },
+    "skills": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/directory" } },
+    "plugin": { "$ref": "#/$defs/directory" },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "allow": { "type": "array", "items": { "type": "string" } } }
+    },
+    "clients": {
+      "description": "Per-client overrides, merged into the components above. null removes a component for that client.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mcp": { "type": ["object", "null"] },
+          "hooks": { "type": ["object", "null"] },
+          "instructions": { "type": ["object", "null"] },
+          "skills": { "type": ["array", "null"] },
+          "plugin": { "type": ["object", "null"] },
+          "permissions": { "type": ["object", "null"] }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "scalar": { "type": ["string", "boolean", "integer", "array"], "items": { "type": "string" } },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "command"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+        "command": { "type": "string" },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "env": { "type": "object", "additionalProperties": { "type": "string" } },
+        "extra": { "type": "object", "additionalProperties": { "$ref": "#/$defs/scalar" } }
+      }
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["markers", "events"],
+      "properties": {
+        "markers": {
+          "description": "Text found in every hook command of this product, used to recognize its hooks.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "events": {
+          "type": "object",
+          "propertyNames": { "enum": ["sessionStart", "userPromptSubmit", "stop", "preCompact"] },
+          "additionalProperties": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["command"],
+            "properties": {
+              "command": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+              "timeoutSec": { "type": "integer", "minimum": 1, "maximum": 3600 },
+              "statusMessage": { "type": "string" },
+              "matcher": { "type": "string" },
+              "extra": { "type": "object", "additionalProperties": { "$ref": "#/$defs/scalar" } }
+            }
+          }
+        }
+      }
+    },
+    "instructions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["markdown"],
+      "properties": {
+        "markdown": { "type": "string" },
+        "begin": { "type": "string" },
+        "end": { "type": "string" }
+      }
+    },
+    "directory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+        "source": { "type": "string", "description": "Absolute directory in the product bundle." }
+      }
+    }
+  }
+}

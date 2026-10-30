@@ -1,0 +1,22 @@
+{
+  "$schema": "../../docs/manifest.schema.json",
+  "schemaVersion": 1,
+  "product": "acme",
+  "name": "Acme",
+  "version": "1.0.0",
+  "mcp": { "name": "acme", "command": "{acmeMcp}", "args": ["--source", "{clientName}"] },
+  "hooks": {
+    "markers": ["acme_mcp"],
+    "events": {
+      "sessionStart": { "command": ["{acmeMcp}", "--session-start", "--source", "{clientName}"], "timeoutSec": 10, "matcher": "startup|resume" },
+      "stop": { "command": ["{acmeMcp}", "--notify-stop", "--source", "{clientName}"], "timeoutSec": 10, "statusMessage": "Notifying Acme" }
+    }
+  },
+  "instructions": { "markdown": "Acme is available through the `acme` MCP server." },
+  "skills": [{ "name": "acme-helper", "source": "{bundle}/skills/acme-helper" }],
+  "permissions": { "allow": ["mcp__acme__ping"] },
+  "clients": {
+    "codex": { "hooks": { "events": { "sessionStart": { "matcher": "^(startup|resume)$" } } }, "mcp": { "extra": { "startup_timeout_sec": 20 } } },
+    "claude-desktop": { "mcp": { "args": ["--profile", "chat"] } }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "../../docs/manifest.schema.json",
+  "schemaVersion": 1,
+  "product": "agent-installer-probe",
+  "name": "Agent Installer Probe",
+  "version": "0.1.0",
+  "mcp": {
+    "name": "agent-installer-probe",
+    "command": "{node}",
+    "args": ["{bundle}/probe-mcp.mjs", "--client", "{clientId}"]
+  },
+  "hooks": {
+    "markers": ["probe-hook.mjs"],
+    "events": {
+      "sessionStart": { "command": ["{node}", "{bundle}/probe-hook.mjs", "--event", "sessionStart", "--client", "{clientId}"], "timeoutSec": 10 },
+      "userPromptSubmit": { "command": ["{node}", "{bundle}/probe-hook.mjs", "--event", "userPromptSubmit", "--client", "{clientId}"], "timeoutSec": 10 },
+      "stop": { "command": ["{node}", "{bundle}/probe-hook.mjs", "--event", "stop", "--client", "{clientId}"], "timeoutSec": 10, "statusMessage": "agent-installer probe" }
+    }
+  },
+  "instructions": {
+    "markdown": "The `agent-installer-probe` MCP server and skill are a temporary installation test. Ignore them unless the user asks about the agent-installer probe."
+  },
+  "skills": [{ "name": "agent-installer-probe", "source": "{bundle}/skills/agent-installer-probe" }],
+  "permissions": { "allow": ["mcp__agent-installer-probe__ping"] },
+  "clients": {
+    "cursor": { "hooks": { "events": { "userPromptSubmit": null } } }
+  }
+}

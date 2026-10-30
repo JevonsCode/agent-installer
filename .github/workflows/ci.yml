@@ -1,0 +1,36 @@
+name: Verify
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            binary: build/agent-installer
+          - os: ubuntu-latest
+            binary: build/agent-installer
+          - os: windows-latest
+            binary: build/agent-installer.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: dart pub get
+      - run: dart format --output=none --set-exit-if-changed lib bin test example
+      - run: dart analyze
+      - run: dart test --reporter expanded
+      - run: mkdir build
+      - run: dart compile exe bin/agent_installer.dart -o ${{ matrix.binary }}
+      - run: node --test test/node_binding_test.mjs
+        env:
+          AGENT_INSTALLER_BIN: ${{ github.workspace }}/${{ matrix.binary }}
