@@ -19,6 +19,9 @@ Future<(int, String)> run(Directory home, List<String> arguments) async {
       if (!Platform.isWindows)
         'PUB_CACHE': parent['PUB_CACHE'] ?? '${parent['HOME']}/.pub-cache',
     },
+    // The CLI writes UTF-8 on every platform, not the Windows code page.
+    stdoutEncoding: utf8,
+    stderrEncoding: utf8,
   );
   return (result.exitCode, result.stdout as String);
 }
