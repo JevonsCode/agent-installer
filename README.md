@@ -6,8 +6,8 @@ Detects the AI agent clients on this machine and installs a product's
 integration (MCP server, hooks, instructions, skills, permissions) into the
 clients a person selects, with a dry-run preview, status and removal.
 
-Products such as DingDong and FULI describe what to install; the installer
-writes it into MCP configs, lifecycle hooks, managed sections in instruction
+A product (the host) describes what to install; the installer writes it
+into MCP configs, lifecycle hooks, managed sections in instruction
 files, skill and plugin directories, and permission allowlists. Every step can
 be previewed first, and afterward you can check status, update, or uninstall.
 
@@ -17,7 +17,8 @@ directory with the session launcher component. A product only describes
 it and in what format" for each client is described by the built-in catalog
 and extension files ([Install targets](#install-targets)); the actual writing
 is done by a fixed set of code — neither the manifest nor the extension files
-can execute code.
+can execute code. [Integrating a host](docs/integrating-a-host.md) walks a
+host application through the whole flow.
 
 ## Download
 

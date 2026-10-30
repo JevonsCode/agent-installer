@@ -20,3 +20,9 @@
     exists the old directory is no longer read. Old backups can be deleted
     by hand.
   - New: `defaultSharedDirectory()` and `defaultBackupsDirectory(product)`.
+
+### Changed
+
+- Code and the README no longer describe rules of particular host products.
+  A short, neutral [Integrating a host](docs/integrating-a-host.md) guide
+  covers the host flow with generic examples.

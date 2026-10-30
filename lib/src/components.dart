@@ -322,8 +322,8 @@ void _hookParts(
         ? tomlFile.readAsStringSync()
         : null;
     if (CodexToml.hasHookTables(tomlText)) {
-      // The person keeps hooks in config.toml, so FULI's rule applies: write
-      // there and only clean hooks.json, unless both hold unrelated hooks.
+      // The person keeps hooks in config.toml: write there and only clean
+      // hooks.json, unless both files hold unrelated hooks.
       final File json = File(jsonPath);
       if (json.existsSync() &&
           _hasForeignJsonHooks(json.readAsStringSync(), product)) {

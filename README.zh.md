@@ -2,17 +2,14 @@
 
 [English](README.md) | 简体中文
 
-Detects the AI agent clients on this machine and installs a product's
-integration (MCP server, hooks, instructions, skills, permissions) into the
-clients a person selects, with a dry-run preview, status and removal.
-
-扫描本机装了哪些 Agent 客户端，再把一个产品（DingDong、FULI……）的接入装进用户勾选
+扫描本机装了哪些 Agent 客户端，再把一个产品（宿主应用）的接入装进用户勾选
 的那几个：MCP 服务、生命周期 Hook、说明文件中的托管段落、Skills、插件目录和权限
 白名单。每一步都可以先预览，之后可以查看状态、更新和卸载。
 
 它与会话打开组件共用客户端 ID 和 [本机扩展](https://github.com/JevonsCode/agent-session-launcher/blob/main/docs/extensions.md) 目录。产品只描述“装
 什么”（[产品清单](#产品清单)），客户端“装在哪、什么格式”由内置目录和扩展文件描述
-（[安装目标](#安装目标)），写入由一组固定代码完成，清单和扩展文件都不能执行代码。
+（[安装目标](#安装目标)），写入由一组固定代码完成，清单和扩展文件都不能执行代码。[接入宿主](docs/integrating-a-host.md)
+（英文）介绍宿主应用的完整接入流程。
 
 ## 下载
 
