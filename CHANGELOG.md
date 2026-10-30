@@ -52,3 +52,10 @@
   updated in place, the receipt last, and the change reports it in the new
   `note` field. Other failures leave the directory as it was and are
   reported under `problems` instead of aborting the run.
+- Each client result has `actionCodes`, one stable code per entry of
+  `actions` (`restart_client`, `new_session`, `reload_config`,
+  `trust_hooks`, `other`), so hosts can localize. The CLI output is
+  described in the new `docs/result.schema.json`. An extension file's
+  `afterInstall` accepts `{ "code", "message" }` objects besides plain text
+  (code `other`); `InstallTarget.afterInstall` is now a list of
+  `AfterInstallAction` records.

@@ -112,6 +112,8 @@ void main() {
     expect(applied.state, 'connected');
     expect(applied.problems, isEmpty);
     expect(applied.actions, contains(startsWith('Start a new Claude Code')));
+    expect(applied.actionCodes, <String>['new_session']);
+    expect(applied.toJson()['actionCodes'], <String>['new_session']);
     expect(json('.claude.json')['mcpServers'], <String, Object?>{
       'other': <String, Object?>{'command': 'x'},
       'acme': <String, Object?>{
@@ -202,6 +204,8 @@ void main() {
     final ClientResult applied = i.apply(<String>['codex']).single;
     expect(applied.problems, isEmpty);
     expect(applied.actions, contains(contains('/hooks')));
+    expect(applied.actionCodes, <String>['new_session', 'trust_hooks']);
+    expect(applied.actionCodes, hasLength(applied.actions.length));
     final String config = read('.codex/config.toml')!;
     expect(
       config,
@@ -867,6 +871,66 @@ void main() {
     i.apply(<String>['acme-agent', 'cursor']);
     expect(read('.acme-agent/AGENTS.md'), contains('ACME MANAGED'));
     expect(read('.cursor/my-skills/acme-helper/SKILL.md'), isNotNull);
+  });
+
+  test('extension steps carry a stable code, or other for plain text', () {
+    write(
+      'ext/acme-agent.json',
+      jsonEncode(<String, Object?>{
+        'schemaVersion': 1,
+        'install': <String, Object?>{
+          'detect': <Object?>[
+            <String, Object?>{'path': '~/.acme-agent'},
+          ],
+          'mcp': <String, Object?>{
+            'file': '~/.acme-agent/mcp.json',
+            'format': 'mcp-servers-json',
+          },
+          'afterInstall': <Object?>[
+            <String, Object?>{
+              'code': 'restart_client',
+              'message': 'Restart Acme Agent.',
+            },
+            'Sign in again.',
+          ],
+        },
+      }),
+    );
+    write(
+      'ext/bad-agent.json',
+      jsonEncode(<String, Object?>{
+        'schemaVersion': 1,
+        'install': <String, Object?>{
+          'detect': <Object?>[
+            <String, Object?>{'path': '~/.bad-agent'},
+          ],
+          'mcp': <String, Object?>{
+            'file': '~/.bad-agent/mcp.json',
+            'format': 'mcp-servers-json',
+          },
+          'afterInstall': <Object?>[
+            <String, Object?>{'code': 'dance', 'message': 'x'},
+          ],
+        },
+      }),
+    );
+    final InstallTargets targets = InstallTargets.load(
+      extensionsDirectory: '${home.path}/ext',
+    );
+    expect(targets.problems.single.file, 'bad-agent.json');
+    expect(targets.problems.single.message, contains('restart_client'));
+    final ClientResult result = installer(
+      targets: targets,
+    ).apply(<String>['acme-agent']).single;
+    expect(result.actions, <String>['Restart Acme Agent.', 'Sign in again.']);
+    expect(result.actionCodes, <String>['restart_client', 'other']);
+    expect(
+      installer(
+        targets: targets,
+      ).apply(<String>['acme-agent']).single.actionCodes,
+      isEmpty,
+      reason: 'nothing changed, nothing to do',
+    );
   });
 
   test('manifests are validated up front', () {

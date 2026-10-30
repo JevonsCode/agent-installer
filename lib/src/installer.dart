@@ -120,8 +120,9 @@ final class ClientResult {
     this.state,
     this.changes,
     this.problems,
-    this.actions,
-  );
+    this.actions, [
+    this.actionCodes = const <String>[],
+  ]);
   final String id;
   final String name;
 
@@ -130,8 +131,12 @@ final class ClientResult {
   final List<PlannedChange> changes;
   final List<String> problems;
 
-  /// What the person still has to do, e.g. restart the client.
+  /// What the person still has to do, e.g. restart the client, in English.
   final List<String> actions;
+
+  /// A stable code for each of [actions], in the same order, so a host can
+  /// show its own wording; the codes are listed in `actionCodes`.
+  final List<String> actionCodes;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'id': id,
@@ -140,6 +145,7 @@ final class ClientResult {
     'changes': <Object?>[for (final c in changes) c.toJson()],
     'problems': problems,
     'actions': actions,
+    'actionCodes': actionCodes,
   };
 }
 
@@ -333,12 +339,16 @@ final class AgentInstaller {
     final bool hooksChanged = changes.any(
       (c) => c.components.contains('hooks'),
     );
-    final List<String> actions = changes.isEmpty || !install
-        ? const <String>[]
-        : <String>[
+    final List<AfterInstallAction> steps = changes.isEmpty || !install
+        ? const <AfterInstallAction>[]
+        : <AfterInstallAction>[
             ...target.afterInstall,
             if (hooksChanged && target.hooks?.format == 'codex-hooks')
-              'Review and trust the new hooks in Codex with /hooks.',
+              (
+                code: 'trust_hooks',
+                message:
+                    'Review and trust the new hooks in ${target.name} with /hooks.',
+              ),
           ];
     return ClientResult(
       target.id,
@@ -346,7 +356,8 @@ final class AgentInstaller {
       _status(target).state,
       changes,
       problems,
-      actions,
+      <String>[for (final AfterInstallAction s in steps) s.message],
+      <String>[for (final AfterInstallAction s in steps) s.code],
     );
   }
 

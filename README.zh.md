@@ -128,6 +128,20 @@ installer.apply(['claude-code']);             // 用户确认后
 客户端不支持）。`detected` 与 `evidence` 只说明找到了什么，不影响能否安装：用户可以
 给还没运行过的客户端预先安装。
 
+`plan`、`apply`、`remove` 之后，每个客户端还会列出 `actions`（用户还需要做的事，
+英文）和 `actionCodes`（与之一一对应、顺序相同的稳定代码），宿主可以据此显示自己的
+文案：
+
+| 代码 | 含义 |
+| --- | --- |
+| `restart_client` | 退出并重新打开客户端 |
+| `new_session` | 在客户端里开始新会话 |
+| `reload_config` | 重新加载客户端的配置或窗口 |
+| `trust_hooks` | 在客户端里检查并信任新的 Hook（Codex 用 `/hooks`） |
+| `other` | 只有英文文字描述 |
+
+完整输出见 [result.schema.json](docs/result.schema.json)。
+
 ## 内置客户端
 
 | ID | MCP | Hook | 说明文件 | Skills | 其他 |
@@ -227,6 +241,9 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
 - 写入格式只能从内置格式中选：MCP 为 `claude-json`、`mcp-servers-json`、`kiro-json`、
   `opencode-json`、`codex-toml`，Hook 为 `claude-hooks`、`codex-hooks`、`cursor-hooks`。
 - 文件名用内置 ID（如 `cursor.json`）时，`install` 中列出的键替换内置值，其余保留。
+- `afterInstall` 列出变更后用户还要做的事：写成
+  `{ "code": "restart_client", "message": "Restart Acme Agent." }`（代码取自上表），
+  或纯文字（代码为 `other`）。
 - 只有 `install` 的文件不会成为会话打开组件的客户端。出错的扩展文件只跳过它自己，
   原因在 `extensionErrors` 中。
 

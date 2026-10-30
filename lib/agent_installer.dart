@@ -23,4 +23,10 @@ export 'src/installer.dart'
 export 'src/json_edit.dart' show JsonEdit;
 export 'src/manifest.dart' show ProductManifest;
 export 'src/targets.dart'
-    show InstallTarget, InstallTargets, builtinInstallTargets, hookEvents;
+    show
+        AfterInstallAction,
+        InstallTarget,
+        InstallTargets,
+        actionCodes,
+        builtinInstallTargets,
+        hookEvents;

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent Installer CLI result",
+  "description": "What `agent-installer plan|apply|remove --json` prints. Exit code 0: every client finished; 2: finished, but some components were left alone (see each client's problems); 1: failed (ok is false). scan and status print `clients` in the TargetScan and ClientStatus shapes of bindings/node/index.d.ts.",
+  "type": "object",
+  "required": ["version", "ok"],
+  "properties": {
+    "version": { "const": 1 },
+    "ok": { "type": "boolean" },
+    "product": { "type": "string" },
+    "clients": { "type": "array", "items": { "$ref": "#/$defs/clientResult" } },
+    "extensionErrors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": { "file": { "type": "string" }, "message": { "type": "string" } },
+        "required": ["message"]
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "description": "e.g. invalid_arguments, invalid_manifest, invalid_target, unknown_client, unsupported_platform, io_error.",
+          "type": "string"
+        },
+        "message": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "actionCode": {
+      "description": "A stable code for a step left to the person, so a host can show its own wording. restart_client: quit and reopen the client. new_session: start a new session or conversation in the client. reload_config: reload the client's configuration or window. trust_hooks: review and trust the new or changed hooks in the client (Codex: /hooks). other: only the English message describes it (plain text from an extension file).",
+      "enum": ["restart_client", "new_session", "reload_config", "trust_hooks", "other"]
+    },
+    "change": {
+      "type": "object",
+      "required": ["path", "components", "action"],
+      "properties": {
+        "path": { "type": "string", "description": "Shown relative to the home directory, e.g. ~/.claude.json." },
+        "components": {
+          "type": "array",
+          "items": { "enum": ["mcp", "hooks", "permissions", "instructions", "skills", "plugin"] }
+        },
+        "action": {
+          "description": "adopt: an existing directory that already holds the product's files only gets its receipt.",
+          "enum": ["create", "update", "delete", "adopt"]
+        },
+        "diff": { "type": "string" },
+        "note": { "type": "string", "description": "How the change was made when that differs, e.g. a directory in use whose files were updated in place." }
+      }
+    },
+    "clientResult": {
+      "type": "object",
+      "required": ["id", "name", "state", "changes", "problems", "actions", "actionCodes"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "state": { "enum": ["connected", "update_available", "not_connected", "conflict", "manual", "unsupported"] },
+        "changes": { "type": "array", "items": { "$ref": "#/$defs/change" } },
+        "problems": { "type": "array", "items": { "type": "string" }, "description": "Components left alone, with the reason." },
+        "actions": { "type": "array", "items": { "type": "string" }, "description": "What the person still has to do, in English." },
+        "actionCodes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/actionCode" },
+          "description": "One code per entry of actions, in the same order."
+        }
+      }
+    }
+  }
+}

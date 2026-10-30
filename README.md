@@ -154,6 +154,20 @@ support it). `detected` and `evidence` only state what was found; they don't
 affect whether installation is possible: a user can pre-install for a client
 that has never been run.
 
+After `plan`, `apply` or `remove`, each client also lists `actions`, what
+the person still has to do in English, and `actionCodes`, one stable code
+per action in the same order, so a host can show its own wording:
+
+| Code | Meaning |
+| --- | --- |
+| `restart_client` | Quit and reopen the client |
+| `new_session` | Start a new session in the client |
+| `reload_config` | Reload the client's configuration or window |
+| `trust_hooks` | Review and trust the new hooks in the client (Codex: `/hooks`) |
+| `other` | Only the English text describes it |
+
+The full output is described in [result.schema.json](docs/result.schema.json).
+
 ## Built-in clients
 
 | ID | MCP | Hook | Instructions | Skills | Other |
@@ -275,6 +289,9 @@ to its extension file; see the fields in
   `codex-toml`; for hooks, `claude-hooks`, `codex-hooks`, `cursor-hooks`.
 - When the file name uses a built-in ID (e.g. `cursor.json`), the keys listed
   under `install` replace the built-in values; the rest are kept.
+- `afterInstall` lists the steps left to the person after a change, as
+  `{ "code": "restart_client", "message": "Restart Acme Agent." }` with one of
+  the codes above, or as plain text (code `other`).
 - A file whose only field is `install` never becomes a client of the session
   launcher component. An extension file with an error only skips itself; the
   reason is in `extensionErrors`.

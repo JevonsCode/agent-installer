@@ -24,148 +24,190 @@ const Map<String, String> _claudeEvents = <String, String>{
 
 /// Built-in install targets, in the shape of an extension file's `install`
 /// section. Verify upstream paths and formats when a client changes.
-const Map<String, Map<String, Object?>>
-builtinInstallTargets = <String, Map<String, Object?>>{
-  'claude-code': <String, Object?>{
-    'name': 'Claude Code',
-    'detect': <Object?>[
-      <String, Object?>{'command': 'claude'},
-      <String, Object?>{'path': '~/.claude.json'},
-      <String, Object?>{'path': '~/.claude'},
-    ],
-    'mcp': <String, Object?>{'file': '~/.claude.json', 'format': 'claude-json'},
-    'hooks': <String, Object?>{
-      'file': '~/.claude/settings.json',
-      'format': 'claude-hooks',
-      'events': _claudeEvents,
-    },
-    'permissions': <String, Object?>{'file': '~/.claude/settings.json'},
-    'instructions': <String, Object?>{'file': '~/.claude/CLAUDE.md'},
-    'skills': <String, Object?>{'dir': '~/.claude/skills'},
-    'afterInstall': <String>[
-      'Start a new Claude Code session to load the change.',
-    ],
-  },
-  'claude-desktop': <String, Object?>{
-    'name': 'Claude Desktop',
-    'os': <String>['macos', 'windows'],
-    'detect': <Object?>[
-      <String, Object?>{'path': '{appData}/Claude'},
-    ],
-    'mcp': <String, Object?>{
-      'file': '{appData}/Claude/claude_desktop_config.json',
-      'format': 'mcp-servers-json',
-    },
-    'afterInstall': <String>['Restart Claude Desktop to load the change.'],
-  },
-  'codex': <String, Object?>{
-    'name': 'Codex',
-    'home': <String, Object?>{'env': 'CODEX_HOME', 'default': '~/.codex'},
-    'detect': <Object?>[
-      <String, Object?>{'command': 'codex'},
-      <String, Object?>{'path': '{home}/config.toml'},
-    ],
-    'mcp': <String, Object?>{
-      'file': '{home}/config.toml',
-      'format': 'codex-toml',
-    },
-    'hooks': <String, Object?>{
-      'file': '{home}/hooks.json',
-      'tomlFile': '{home}/config.toml',
-      'format': 'codex-hooks',
-      'events': _claudeEvents,
-    },
-    'instructions': <String, Object?>{
-      'file': '{home}/AGENTS.md',
-      'overrideFile': '{home}/AGENTS.override.md',
-    },
-    'skills': <String, Object?>{'dir': '~/.agents/skills'},
-    'afterInstall': <String>['Start a new Codex session to load the change.'],
-  },
-  'cursor': <String, Object?>{
-    'name': 'Cursor',
-    'detect': <Object?>[
-      <String, Object?>{'command': 'cursor'},
-      <String, Object?>{'path': '~/.cursor'},
-    ],
-    'mcp': <String, Object?>{
-      'file': '~/.cursor/mcp.json',
-      'format': 'mcp-servers-json',
-    },
-    'hooks': <String, Object?>{
-      'file': '~/.cursor/hooks.json',
-      'format': 'cursor-hooks',
-      'events': <String, String>{
-        'sessionStart': 'sessionStart',
-        'userPromptSubmit': 'beforeSubmitPrompt',
-        'stop': 'stop',
-        'agentResponse': 'afterAgentResponse',
+const Map<String, Map<String, Object?>> builtinInstallTargets =
+    <String, Map<String, Object?>>{
+      'claude-code': <String, Object?>{
+        'name': 'Claude Code',
+        'detect': <Object?>[
+          <String, Object?>{'command': 'claude'},
+          <String, Object?>{'path': '~/.claude.json'},
+          <String, Object?>{'path': '~/.claude'},
+        ],
+        'mcp': <String, Object?>{
+          'file': '~/.claude.json',
+          'format': 'claude-json',
+        },
+        'hooks': <String, Object?>{
+          'file': '~/.claude/settings.json',
+          'format': 'claude-hooks',
+          'events': _claudeEvents,
+        },
+        'permissions': <String, Object?>{'file': '~/.claude/settings.json'},
+        'instructions': <String, Object?>{'file': '~/.claude/CLAUDE.md'},
+        'skills': <String, Object?>{'dir': '~/.claude/skills'},
+        'afterInstall': <Object?>[
+          <String, Object?>{
+            'code': 'new_session',
+            'message': 'Start a new Claude Code session to load the change.',
+          },
+        ],
       },
-    },
-    'skills': <String, Object?>{'dir': '~/.cursor/skills'},
-    'afterInstall': <String>['Reload Cursor to load the change.'],
-  },
-  'gemini-cli': <String, Object?>{
-    'name': 'Gemini CLI',
-    'home': <String, Object?>{'env': 'GEMINI_CLI_HOME', 'default': '~'},
-    'detect': <Object?>[
-      <String, Object?>{'command': 'gemini'},
-      <String, Object?>{'path': '{home}/.gemini/settings.json'},
-    ],
-    'mcp': <String, Object?>{
-      'file': '{home}/.gemini/settings.json',
-      'format': 'mcp-servers-json',
-    },
-  },
-  'kiro': <String, Object?>{
-    'name': 'Kiro',
-    'home': <String, Object?>{'env': 'KIRO_HOME', 'default': '~/.kiro'},
-    'detect': <Object?>[
-      <String, Object?>{'command': 'kiro'},
-      <String, Object?>{'command': 'kiro-cli'},
-      <String, Object?>{'path': '{home}/settings/mcp.json'},
-    ],
-    'mcp': <String, Object?>{
-      'file': '{home}/settings/mcp.json',
-      'format': 'kiro-json',
-    },
-  },
-  'qwen-code': <String, Object?>{
-    'name': 'Qwen Code',
-    'home': <String, Object?>{'env': 'QWEN_HOME', 'default': '~/.qwen'},
-    'detect': <Object?>[
-      <String, Object?>{'command': 'qwen'},
-      <String, Object?>{'path': '{home}/settings.json'},
-    ],
-    'mcp': <String, Object?>{
-      'file': '{home}/settings.json',
-      'format': 'mcp-servers-json',
-    },
-  },
-  'opencode': <String, Object?>{
-    'name': 'OpenCode',
-    'detect': <Object?>[
-      <String, Object?>{'command': 'opencode'},
-      <String, Object?>{'path': '{configHome}/opencode/opencode.json'},
-      <String, Object?>{'path': '{configHome}/opencode/opencode.jsonc'},
-    ],
-    'manualWhenEnv': <String>[
-      'OPENCODE_CONFIG',
-      'OPENCODE_CONFIG_CONTENT',
-      'OPENCODE_CONFIG_DIR',
-    ],
-    'mcp': <String, Object?>{
-      'file': <String>[
-        '{configHome}/opencode/opencode.jsonc',
-        '{configHome}/opencode/opencode.json',
-      ],
-      'format': 'opencode-json',
-    },
-    'skills': <String, Object?>{'dir': '{configHome}/opencode/skills'},
-    'plugins': <String, Object?>{'dir': '{configHome}/opencode/plugins'},
-    'afterInstall': <String>['Restart OpenCode to load the change.'],
-  },
+      'claude-desktop': <String, Object?>{
+        'name': 'Claude Desktop',
+        'os': <String>['macos', 'windows'],
+        'detect': <Object?>[
+          <String, Object?>{'path': '{appData}/Claude'},
+        ],
+        'mcp': <String, Object?>{
+          'file': '{appData}/Claude/claude_desktop_config.json',
+          'format': 'mcp-servers-json',
+        },
+        'afterInstall': <Object?>[
+          <String, Object?>{
+            'code': 'restart_client',
+            'message': 'Restart Claude Desktop to load the change.',
+          },
+        ],
+      },
+      'codex': <String, Object?>{
+        'name': 'Codex',
+        'home': <String, Object?>{'env': 'CODEX_HOME', 'default': '~/.codex'},
+        'detect': <Object?>[
+          <String, Object?>{'command': 'codex'},
+          <String, Object?>{'path': '{home}/config.toml'},
+        ],
+        'mcp': <String, Object?>{
+          'file': '{home}/config.toml',
+          'format': 'codex-toml',
+        },
+        'hooks': <String, Object?>{
+          'file': '{home}/hooks.json',
+          'tomlFile': '{home}/config.toml',
+          'format': 'codex-hooks',
+          'events': _claudeEvents,
+        },
+        'instructions': <String, Object?>{
+          'file': '{home}/AGENTS.md',
+          'overrideFile': '{home}/AGENTS.override.md',
+        },
+        'skills': <String, Object?>{'dir': '~/.agents/skills'},
+        'afterInstall': <Object?>[
+          <String, Object?>{
+            'code': 'new_session',
+            'message': 'Start a new Codex session to load the change.',
+          },
+        ],
+      },
+      'cursor': <String, Object?>{
+        'name': 'Cursor',
+        'detect': <Object?>[
+          <String, Object?>{'command': 'cursor'},
+          <String, Object?>{'path': '~/.cursor'},
+        ],
+        'mcp': <String, Object?>{
+          'file': '~/.cursor/mcp.json',
+          'format': 'mcp-servers-json',
+        },
+        'hooks': <String, Object?>{
+          'file': '~/.cursor/hooks.json',
+          'format': 'cursor-hooks',
+          'events': <String, String>{
+            'sessionStart': 'sessionStart',
+            'userPromptSubmit': 'beforeSubmitPrompt',
+            'stop': 'stop',
+            'agentResponse': 'afterAgentResponse',
+          },
+        },
+        'skills': <String, Object?>{'dir': '~/.cursor/skills'},
+        'afterInstall': <Object?>[
+          <String, Object?>{
+            'code': 'reload_config',
+            'message': 'Reload Cursor to load the change.',
+          },
+        ],
+      },
+      'gemini-cli': <String, Object?>{
+        'name': 'Gemini CLI',
+        'home': <String, Object?>{'env': 'GEMINI_CLI_HOME', 'default': '~'},
+        'detect': <Object?>[
+          <String, Object?>{'command': 'gemini'},
+          <String, Object?>{'path': '{home}/.gemini/settings.json'},
+        ],
+        'mcp': <String, Object?>{
+          'file': '{home}/.gemini/settings.json',
+          'format': 'mcp-servers-json',
+        },
+      },
+      'kiro': <String, Object?>{
+        'name': 'Kiro',
+        'home': <String, Object?>{'env': 'KIRO_HOME', 'default': '~/.kiro'},
+        'detect': <Object?>[
+          <String, Object?>{'command': 'kiro'},
+          <String, Object?>{'command': 'kiro-cli'},
+          <String, Object?>{'path': '{home}/settings/mcp.json'},
+        ],
+        'mcp': <String, Object?>{
+          'file': '{home}/settings/mcp.json',
+          'format': 'kiro-json',
+        },
+      },
+      'qwen-code': <String, Object?>{
+        'name': 'Qwen Code',
+        'home': <String, Object?>{'env': 'QWEN_HOME', 'default': '~/.qwen'},
+        'detect': <Object?>[
+          <String, Object?>{'command': 'qwen'},
+          <String, Object?>{'path': '{home}/settings.json'},
+        ],
+        'mcp': <String, Object?>{
+          'file': '{home}/settings.json',
+          'format': 'mcp-servers-json',
+        },
+      },
+      'opencode': <String, Object?>{
+        'name': 'OpenCode',
+        'detect': <Object?>[
+          <String, Object?>{'command': 'opencode'},
+          <String, Object?>{'path': '{configHome}/opencode/opencode.json'},
+          <String, Object?>{'path': '{configHome}/opencode/opencode.jsonc'},
+        ],
+        'manualWhenEnv': <String>[
+          'OPENCODE_CONFIG',
+          'OPENCODE_CONFIG_CONTENT',
+          'OPENCODE_CONFIG_DIR',
+        ],
+        'mcp': <String, Object?>{
+          'file': <String>[
+            '{configHome}/opencode/opencode.jsonc',
+            '{configHome}/opencode/opencode.json',
+          ],
+          'format': 'opencode-json',
+        },
+        'skills': <String, Object?>{'dir': '{configHome}/opencode/skills'},
+        'plugins': <String, Object?>{'dir': '{configHome}/opencode/plugins'},
+        'afterInstall': <Object?>[
+          <String, Object?>{
+            'code': 'restart_client',
+            'message': 'Restart OpenCode to load the change.',
+          },
+        ],
+      },
+    };
+
+/// Stable codes for what a person still has to do after a change, so a host
+/// can show its own wording: `restart_client`, `new_session` (start a new
+/// session), `reload_config` (reload the client's configuration or window),
+/// `trust_hooks` (review and trust new hooks in the client) and `other`
+/// (only the English message describes it).
+const Set<String> actionCodes = <String>{
+  'restart_client',
+  'new_session',
+  'reload_config',
+  'trust_hooks',
+  'other',
 };
+
+/// One step left to the person: a stable [code] and an English [message].
+typedef AfterInstallAction = ({String code, String message});
 
 const Set<String> mcpFormats = <String>{
   'claude-json',
@@ -203,7 +245,7 @@ final class InstallTarget {
     this.instructionsOverrideFile,
     this.skillsDir,
     this.pluginsDir,
-    this.afterInstall = const <String>[],
+    this.afterInstall = const <AfterInstallAction>[],
     this.extensionFile,
   });
 
@@ -359,14 +401,8 @@ final class InstallTarget {
       skillsDir: dir('skills'),
       pluginsDir: dir('plugins'),
       afterInstall: json.containsKey('afterInstall')
-          ? <String>[
-              for (final String s in _strings(
-                json['afterInstall'],
-                '$path.afterInstall',
-              ))
-                _text(s, '$path.afterInstall', 200),
-            ]
-          : const <String>[],
+          ? _afterInstall(json['afterInstall'], '$path.afterInstall')
+          : const <AfterInstallAction>[],
       extensionFile: extensionFile,
     );
     if (target.components.isEmpty) {
@@ -399,7 +435,7 @@ final class InstallTarget {
   final String? instructionsOverrideFile;
   final String? skillsDir;
   final String? pluginsDir;
-  final List<String> afterInstall;
+  final List<AfterInstallAction> afterInstall;
 
   /// The user extension file that defines or customizes this target.
   final String? extensionFile;
@@ -556,6 +592,28 @@ TargetFile _file(
     invalidTarget('$path.format', 'must be one of ${formats.join(', ')}.');
   }
   return (files: files, format: format);
+}
+
+/// Plain text is an `other` step; `{ "code", "message" }` names its code.
+List<AfterInstallAction> _afterInstall(Object? value, String path) {
+  if (value is! List || value.length > 32) {
+    invalidTarget(path, 'must be a list of at most 32 steps.');
+  }
+  return <AfterInstallAction>[
+    for (final (int i, Object? item) in value.indexed)
+      _afterInstallStep(item, '$path[$i]'),
+  ];
+}
+
+AfterInstallAction _afterInstallStep(Object? item, String path) {
+  if (item is String) return (code: 'other', message: _text(item, path, 200));
+  final Map<String, Object?> step = _object(item, path);
+  _keys(step, const <String>{'code', 'message'}, path);
+  final Object? code = step['code'];
+  if (code is! String || !actionCodes.contains(code)) {
+    invalidTarget('$path.code', 'must be one of ${actionCodes.join(', ')}.');
+  }
+  return (code: code, message: _text(step['message'], '$path.message', 200));
 }
 
 String _template(Object? value, String path, {bool home = true}) {

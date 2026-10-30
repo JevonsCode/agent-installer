@@ -51,9 +51,14 @@ export interface ClientResult {
   changes: PlannedChange[];
   /** Components that could not be changed, with the reason. */
   problems: string[];
-  /** What the person still has to do, e.g. restart the client. */
+  /** What the person still has to do, e.g. restart the client, in English. */
   actions: string[];
+  /** One stable code per entry of `actions`, in the same order, for the host's own wording. */
+  actionCodes: ActionCode[];
 }
+
+/** See docs/result.schema.json. */
+export type ActionCode = 'restart_client' | 'new_session' | 'reload_config' | 'trust_hooks' | 'other';
 
 export interface InstallerOptions {
   /** Absolute path to the native `agent-installer` for this OS and CPU. */
