@@ -43,3 +43,7 @@
   `adopt: { file, contains? }` marker is found in them (then they are
   replaced). A directory carrying another product's receipt is never
   adopted; anything else stays a `conflict`.
+- Skill and plugin directories are now backed up before they are replaced
+  or removed, as `<backups>/<client-id>/<name>.<UTC time>.bak/`, with the
+  same retention as file backups (the 5 most recent per name). Retention now
+  matches only the installer's own `<name>.<time>.bak` entries.

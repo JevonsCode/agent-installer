@@ -310,6 +310,7 @@ final class AgentInstaller {
     }
     for (final DirectoryPart d in work.directories) {
       final PlannedChange? change = _editDirectory(
+        target.id,
         d,
         resolved,
         install: install,
@@ -390,6 +391,7 @@ final class AgentInstaller {
   }
 
   PlannedChange? _editDirectory(
+    String clientId,
     DirectoryPart part,
     ResolvedProduct resolved, {
     required bool install,
@@ -413,11 +415,17 @@ final class AgentInstaller {
       final PlannedChange change = PlannedChange(shown, <String>[
         part.component,
       ], state.state == 'missing' ? 'create' : 'update');
-      if (write) _copyDirectory(part, state.source!, resolved);
+      if (write) {
+        _backupDirectory(clientId, part.target);
+        _copyDirectory(part, state.source!, resolved);
+      }
       return change;
     }
     if (state.state == 'missing') return null;
-    if (write) Directory(part.target).deleteSync(recursive: true);
+    if (write) {
+      _backupDirectory(clientId, part.target);
+      Directory(part.target).deleteSync(recursive: true);
+    }
     return PlannedChange(shown, <String>[part.component], 'delete');
   }
 
@@ -608,31 +616,78 @@ final class AgentInstaller {
   }
 
   void _backup(String clientId, String path, String? before) {
-    final String? root = backupDirectory;
-    if (root == null || before == null) return;
-    final Directory dir = Directory('$root${env.separator}$clientId');
-    dir.createSync(recursive: true);
+    final Directory? dir = _backupFolder(clientId);
+    if (dir == null || before == null) return;
     final String name = File(path).uri.pathSegments.last;
-    final String stamp = DateTime.now()
-        .toUtc()
-        .toIso8601String()
-        .replaceAll(RegExp(r'[-:]'), '')
-        .replaceAll('.', '');
-    final File backup = File('${dir.path}${env.separator}$name.$stamp.bak');
+    final File backup = File(
+      '${dir.path}${env.separator}$name.${_stamp()}.bak',
+    );
     // Configs can hold tokens: create the copy private before writing to it.
     backup.createSync();
     _restrict(backup.path, 0x180);
-    _restrict(dir.path, 0x1c0);
     backup.writeAsStringSync(before);
-    final List<File> old =
+    _prune(dir, name);
+  }
+
+  /// Copies a directory the product is about to replace or delete, kept like
+  /// file backups: the 5 most recent per name.
+  void _backupDirectory(String clientId, String path) {
+    final Directory source = Directory(path);
+    final Directory? dir = _backupFolder(clientId);
+    if (dir == null || !source.existsSync()) return;
+    final String name = source.uri.pathSegments.where((s) => s.isNotEmpty).last;
+    final Directory backup = Directory(
+      '${dir.path}${env.separator}$name.${_stamp()}.bak',
+    )..createSync();
+    _restrict(backup.path, 0x1c0);
+    for (final FileSystemEntity entry in source.listSync(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entry is! File) continue;
+      final File to = File(
+        '${backup.path}${entry.path.substring(source.path.length)}',
+      );
+      to.parent.createSync(recursive: true);
+      entry.copySync(to.path);
+    }
+    _prune(dir, name);
+  }
+
+  /// The private per-client backup folder, or null when backups are off.
+  Directory? _backupFolder(String clientId) {
+    final String? root = backupDirectory;
+    if (root == null) return null;
+    final Directory dir = Directory('$root${env.separator}$clientId')
+      ..createSync(recursive: true);
+    _restrict(dir.path, 0x1c0);
+    return dir;
+  }
+
+  String _stamp() => DateTime.now()
+      .toUtc()
+      .toIso8601String()
+      .replaceAll(RegExp(r'[-:]'), '')
+      .replaceAll('.', '');
+
+  /// Keeps the 5 most recent backups of [name] in [dir].
+  void _prune(Directory dir, String name) {
+    final RegExp ours = RegExp(
+      '^${RegExp.escape(name)}'
+      r'\.\d{8}T\d+Z\.bak$',
+    );
+    final List<FileSystemEntity> old =
         dir
             .listSync()
-            .whereType<File>()
-            .where((f) => f.uri.pathSegments.last.startsWith('$name.'))
+            .where(
+              (e) => ours.hasMatch(
+                e.uri.pathSegments.lastWhere((s) => s.isNotEmpty),
+              ),
+            )
             .toList()
           ..sort((a, b) => b.path.compareTo(a.path));
-    for (final File f in old.skip(5)) {
-      f.deleteSync();
+    for (final FileSystemEntity e in old.skip(5)) {
+      e.deleteSync(recursive: true);
     }
   }
 }

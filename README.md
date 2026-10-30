@@ -295,6 +295,10 @@ to its extension file; see the fields in
   frequently rewrites `~/.claude.json`), the component re-applies its edit
   against the new content, retrying up to 3 times, and never overwrites the
   client's own change.
+- With a backup directory, the original of every changed file, and every
+  skill or plugin directory before it is replaced or removed, is copied to
+  `<backups>/<client-id>/<name>.<UTC time>.bak` (private to the user); the
+  5 most recent copies per name are kept.
 - After removal, a file that is left with only `{}` is deleted; the same
   applies to an instructions file that removal created.
 - The client's trust store is never modified. After Codex gets a new or

@@ -669,6 +669,48 @@ void main() {
     );
   });
 
+  test('replaced and removed directories are backed up like files', () {
+    final AgentInstaller i = installer(backups: '${home.path}/b');
+    final Directory backups = Directory('${home.path}/b/cursor');
+    List<String> skillBackups() => <String>[
+      for (final FileSystemEntity e in backups.listSync())
+        if (e is Directory) e.uri.pathSegments.where((s) => s.isNotEmpty).last,
+    ];
+    for (int n = 0; n < 7; n++) {
+      i.apply(<String>['cursor']);
+      final File receipt = File(
+        '${home.path}/.cursor/skills/acme-helper/.agent-installer.json',
+      );
+      final Map<String, Object?> data =
+          jsonDecode(receipt.readAsStringSync()) as Map<String, Object?>;
+      write('.cursor/skills/acme-helper/OLD.md', 'old $n');
+      (data['files']! as Map<String, Object?>)['OLD.md'] = fnv1a(
+        utf8.encode('old $n'),
+      );
+      receipt.writeAsStringSync(jsonEncode(data));
+    }
+    expect(skillBackups(), hasLength(5));
+    expect(
+      skillBackups(),
+      everyElement(matches(RegExp(r'^acme-helper\.\d{8}T\d+Z\.bak$'))),
+    );
+    final Directory newest = Directory(
+      '${backups.path}/${(skillBackups()..sort()).last}',
+    );
+    expect(
+      File('${newest.path}/OLD.md').readAsStringSync(),
+      'old 5',
+      reason: 'the copy holds the replaced files',
+    );
+
+    i.remove(<String>['cursor']);
+    final Directory removed = Directory(
+      '${backups.path}/${(skillBackups()..sort()).last}',
+    );
+    expect(File('${removed.path}/OLD.md').readAsStringSync(), 'old 6');
+    expect(skillBackups(), hasLength(5));
+  });
+
   test('outdated skills are replaced', () {
     final AgentInstaller i = installer();
     i.apply(<String>['claude-code']);
