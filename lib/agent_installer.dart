@@ -3,7 +3,12 @@
 library;
 
 export 'src/extensions.dart'
-    show ExtensionFile, ExtensionProblem, defaultExtensionsDirectory;
+    show
+        ExtensionFile,
+        ExtensionProblem,
+        defaultBackupsDirectory,
+        defaultExtensionsDirectory,
+        defaultSharedDirectory;
 export 'src/environment.dart' show InstallEnvironment;
 export 'src/errors.dart' show AgentInstallException;
 export 'src/installer.dart'

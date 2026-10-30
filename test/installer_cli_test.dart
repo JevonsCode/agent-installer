@@ -117,6 +117,30 @@ void main() {
     expect(File('${home.path}/.cursor/mcp.json').existsSync(), isFalse);
   });
 
+  test('backups default to the shared agent-clients root', () async {
+    File('${home.path}/.cursor/mcp.json')
+      ..parent.createSync(recursive: true)
+      ..writeAsStringSync('{}\n');
+    final (int code, _) = await run(home, <String>[
+      'apply',
+      '--clients',
+      'cursor',
+      ...product.take(product.length - 2),
+    ]);
+    expect(code, 0);
+    final String root = Platform.isWindows
+        ? '${home.path}\\AppData\\agent-clients'
+        : '${home.path}/.config/agent-clients';
+    final Directory backups = Directory(
+      '$root${Platform.pathSeparator}backups${Platform.pathSeparator}acme'
+      '${Platform.pathSeparator}cursor',
+    );
+    expect(
+      backups.listSync().map((f) => f.uri.pathSegments.last),
+      contains(startsWith('mcp.json.')),
+    );
+  });
+
   test('errors are structured and nothing is written', () async {
     final File bad = File('${home.path}/bad.json')
       ..writeAsStringSync(

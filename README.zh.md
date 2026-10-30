@@ -54,6 +54,24 @@ dependencies:
 会话打开组件读其余字段并忽略 `install`。两边没有代码依赖，这个约定由各自的测试
 守住。
 
+## 共享目录
+
+两个组件共用一个按用户的根目录 `agent-clients`：
+
+| 平台 | 根目录 |
+| --- | --- |
+| Windows | `%APPDATA%\agent-clients` |
+| macOS / Linux | `XDG_CONFIG_HOME` 为绝对路径时是 `$XDG_CONFIG_HOME/agent-clients`，否则 `~/.config/agent-clients` |
+
+- `extensions/` 放手写的 `<client-id>.json`（`defaultExtensionsDirectory()`）。
+- `backups/<product>/<client-id>/` 放本组件修改文件或替换目录前复制的原件
+  （`defaultBackupsDirectory(product)`）。
+
+0.2 之前扩展放在同一基础目录下的 `agent-session-launcher/clients`，备份放在
+`agent-session-launcher/backups`。只要 `agent-clients/extensions` 还不存在，就继续
+读取旧的扩展目录；不会自动移动任何文件。迁移时新建 `agent-clients/extensions`，
+把 `.json` 文件移进去即可；旧备份不再需要时可以自行删除。
+
 ## 验证
 
 ```sh
@@ -76,8 +94,9 @@ agent-installer remove  --clients cursor --product … --var …
 
 - `plan` 只预览，返回每个文件的变更与 diff，不写任何东西。
 - `apply`、`remove` 必须明确列出客户端，不会默认全选。
-- `--extensions` 默认是共享的本机扩展目录；`--backups` 默认是它旁边的
-  `backups/<product>`，每个文件保留最近 5 份原件。
+- `--extensions` 默认是共享的本机扩展目录；`--backups` 默认是
+  `agent-clients/backups/<product>`（见[共享目录](#共享目录)），每个文件或目录
+  保留最近 5 份原件。
 - `--json` 输出 `{ "version": 1, "ok": true, … }`；失败时 `ok: false` 并带 `error.code`，
   退出码 1。完成但有组件被跳过时退出码 2，原因在每个客户端的 `problems` 里。
 

@@ -64,6 +64,28 @@ in the same `<client-id>.json`, this component only reads `install`, while
 the session launcher component reads the other fields and ignores `install`.
 The two have no code dependency; each side's tests guard this convention.
 
+## Shared directory
+
+Both components use one per-user root, `agent-clients`:
+
+| Platform | Root |
+| --- | --- |
+| Windows | `%APPDATA%\agent-clients` |
+| macOS / Linux | `$XDG_CONFIG_HOME/agent-clients` when `XDG_CONFIG_HOME` is absolute, else `~/.config/agent-clients` |
+
+- `extensions/` holds the hand-written `<client-id>.json` files
+  (`defaultExtensionsDirectory()`).
+- `backups/<product>/<client-id>/` holds the originals this component copied
+  before changing a file or replacing a directory
+  (`defaultBackupsDirectory(product)`).
+
+Before 0.2 the extensions lived in `agent-session-launcher/clients` and the
+backups in `agent-session-launcher/backups` under the same base. While
+`agent-clients/extensions` does not exist, the old extensions directory is
+still read; nothing is moved automatically. To move, create
+`agent-clients/extensions` and move your `.json` files into it; old backups
+can be deleted once you no longer need them.
+
 ## Verification
 
 ```sh
@@ -90,8 +112,9 @@ agent-installer remove  --clients cursor --product … --var …
 - `apply` and `remove` must list clients explicitly; they never default to
   all clients.
 - `--extensions` defaults to the shared local extensions directory;
-  `--backups` defaults to the `backups/<product>` folder next to it, keeping
-  the 5 most recent originals per file.
+  `--backups` defaults to `agent-clients/backups/<product>` (see
+  [Shared directory](#shared-directory)), keeping the 5 most recent originals
+  per file or directory.
 - `--json` prints `{ "version": 1, "ok": true, … }`; on failure, `ok: false`
   with `error.code` and exit code 1. When it finishes but some components
   were skipped, the exit code is 2, with the reasons under each client's

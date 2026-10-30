@@ -1,7 +1,9 @@
 // Shared with agent-session-launcher: both read the same per-user directory,
-// one `<client-id>.json` per client. This package reads only `install`; the
-// launcher reads the other fields and ignores `install`. Keep the directory,
-// file naming and limits in step with that repository.
+// one `<client-id>.json` per client, with the same limits. This package reads
+// only `install`; the launcher reads the other fields and ignores `install`.
+// The installer also keeps its backups under `backups/<product>` in the same
+// root. Keep the root, the layout and the limits in step with that
+// repository; the tests of both repositories guard this convention.
 
 import 'dart:convert';
 import 'dart:io';
@@ -12,26 +14,87 @@ const int maxExtensionFiles = 64;
 /// Each extension file is at most this many bytes.
 const int maxExtensionBytes = 16384;
 
+/// The per-user root that agent-clients components share: `agent-clients`
+/// under `%APPDATA%` on Windows, and under `$XDG_CONFIG_HOME` (when absolute)
+/// or `~/.config` elsewhere. Null when the environment names no such base.
+String? defaultSharedDirectory({
+  Map<String, String>? environment,
+  String? operatingSystem,
+}) => _under(environment, operatingSystem, 'agent-clients', null);
+
 /// The per-user directory that every host shares for hand-written client
-/// files, or null when the environment does not name a home directory.
+/// files, `<shared root>/extensions`, or null when the environment does not
+/// name a home directory.
+///
+/// While that directory does not exist, a directory left at the location
+/// used before 0.2 (`agent-session-launcher/clients`) is returned instead, so
+/// existing files keep working. Files are never moved automatically.
 String? defaultExtensionsDirectory({
   Map<String, String>? environment,
   String? operatingSystem,
 }) {
+  final String? current = _under(
+    environment,
+    operatingSystem,
+    'agent-clients',
+    'extensions',
+  );
+  final String? legacy = _under(
+    environment,
+    operatingSystem,
+    'agent-session-launcher',
+    'clients',
+  );
+  return current != null &&
+          !Directory(current).existsSync() &&
+          Directory(legacy!).existsSync()
+      ? legacy
+      : current;
+}
+
+/// Where originals are copied before [product] changes a client:
+/// `<shared root>/backups/<product>`.
+String? defaultBackupsDirectory(
+  String product, {
+  Map<String, String>? environment,
+  String? operatingSystem,
+}) {
+  final String? root = defaultSharedDirectory(
+    environment: environment,
+    operatingSystem: operatingSystem,
+  );
+  if (root == null) return null;
+  final String sep = (operatingSystem ?? Platform.operatingSystem) == 'windows'
+      ? r'\'
+      : '/';
+  return '$root${sep}backups$sep$product';
+}
+
+String? _under(
+  Map<String, String>? environment,
+  String? operatingSystem,
+  String first,
+  String? second,
+) {
   final Map<String, String> env = environment ?? Platform.environment;
-  if ((operatingSystem ?? Platform.operatingSystem) == 'windows') {
+  final bool windows =
+      (operatingSystem ?? Platform.operatingSystem) == 'windows';
+  final String? base;
+  if (windows) {
     final String? appData = env['APPDATA'];
-    if (appData == null || appData.isEmpty) return null;
-    return '$appData\\agent-session-launcher\\clients';
+    base = appData == null || appData.isEmpty ? null : appData;
+  } else {
+    final String? xdg = env['XDG_CONFIG_HOME'];
+    final String? home = env['HOME'];
+    base = xdg != null && xdg.startsWith('/')
+        ? xdg
+        : home == null || home.isEmpty
+        ? null
+        : '$home/.config';
   }
-  final String? xdg = env['XDG_CONFIG_HOME'];
-  final String? home = env['HOME'];
-  final String? base = xdg != null && xdg.startsWith('/')
-      ? xdg
-      : home == null || home.isEmpty
-      ? null
-      : '$home/.config';
-  return base == null ? null : '$base/agent-session-launcher/clients';
+  if (base == null) return null;
+  final String sep = windows ? r'\' : '/';
+  return second == null ? '$base$sep$first' : '$base$sep$first$sep$second';
 }
 
 /// One user-written client file. Exactly one of [text] and [error] is set.
