@@ -1,35 +1,45 @@
 # Agent Installer
 
+English | [简体中文](README.zh.md)
+
 Detects the AI agent clients on this machine and installs a product's
 integration (MCP server, hooks, instructions, skills, permissions) into the
 clients a person selects, with a dry-run preview, status and removal.
 
-扫描本机装了哪些 Agent 客户端，再把一个产品（DingDong、FULI……）的接入装进用户勾选
-的那几个：MCP 服务、生命周期 Hook、说明文件中的托管段落、Skills、插件目录和权限
-白名单。每一步都可以先预览，之后可以查看状态、更新和卸载。
+Products such as DingDong and FULI describe what to install; the installer
+writes it into MCP configs, lifecycle hooks, managed sections in instruction
+files, skill and plugin directories, and permission allowlists. Every step can
+be previewed first, and afterward you can check status, update, or uninstall.
 
-它与会话打开组件共用客户端 ID 和 [本机扩展](https://github.com/JevonsCode/agent-session-launcher/blob/main/docs/extensions.md) 目录。产品只描述“装
-什么”（[产品清单](#产品清单)），客户端“装在哪、什么格式”由内置目录和扩展文件描述
-（[安装目标](#安装目标)），写入由一组固定代码完成，清单和扩展文件都不能执行代码。
+It shares client IDs and the [local extensions](https://github.com/JevonsCode/agent-session-launcher/blob/main/docs/extensions.md)
+directory with the session launcher component. A product only describes
+"what to install" ([Product manifest](#product-manifest)); "where to install
+it and in what format" for each client is described by the built-in catalog
+and extension files ([Install targets](#install-targets)); the actual writing
+is done by a fixed set of code — neither the manifest nor the extension files
+can execute code.
 
-## 下载
+## Download
 
-每个版本在 [Releases](https://github.com/JevonsCode/agent-installer/releases) 提供编译好的可执行文件，不需要安装 Dart：
+Each release on [Releases](https://github.com/JevonsCode/agent-installer/releases) provides a compiled executable; Dart does not need to be installed:
 
-| 平台 | 文件 |
+| Platform | File |
 | --- | --- |
-| macOS（Apple 芯片） | `agent-installer-macos-arm64` |
-| macOS（Intel） | `agent-installer-macos-x64` |
-| Linux x64 / arm64 | `agent-installer-linux-x64`、`agent-installer-linux-arm64` |
+| macOS (Apple silicon) | `agent-installer-macos-arm64` |
+| macOS (Intel) | `agent-installer-macos-x64` |
+| Linux x64 / arm64 | `agent-installer-linux-x64`, `agent-installer-linux-arm64` |
 | Windows x64 | `agent-installer-windows-x64.exe` |
 
-用同目录的 `SHA256SUMS` 校验。macOS 上通过浏览器下载的文件需要先执行
-`xattr -d com.apple.quarantine <文件>` 并 `chmod +x`；用 `curl` 下载的只需 `chmod +x`。
-Node 宿主把下载的文件路径作为 `executable` 传给绑定即可。
+Verify with the `SHA256SUMS` file in the same directory. On macOS, a file
+downloaded through a browser needs `xattr -d com.apple.quarantine <file>`
+followed by `chmod +x`; a file downloaded with `curl` only needs `chmod +x`.
+A Node host just needs to pass the downloaded file's path as `executable` to
+the binding.
 
-## 构建与依赖
+## Build and dependencies
 
-需要 Dart SDK 3.10 或更高版本。Node 宿主为每个平台编译原生可执行文件：
+Requires Dart SDK 3.10 or later. A Node host compiles a native executable for
+each platform:
 
 ```sh
 dart pub get
@@ -37,7 +47,8 @@ mkdir -p build
 dart compile exe bin/agent_installer.dart -o build/agent-installer
 ```
 
-Dart / Flutter 宿主用 Git 依赖进程内调用（尚未发布到 pub.dev）：
+A Dart/Flutter host calls it in-process via a Git dependency (not yet
+published to pub.dev):
 
 ```yaml
 dependencies:
@@ -47,12 +58,13 @@ dependencies:
       ref: <commit-or-tag>
 ```
 
-本仓库与 [agent-session-launcher](https://github.com/JevonsCode/agent-session-launcher)
-共用本机扩展目录和客户端 ID：同一个 `<client-id>.json` 里，本组件只读 `install`，
-会话打开组件读其余字段并忽略 `install`。两边没有代码依赖，这个约定由各自的测试
-守住。
+This repository shares the local extensions directory and client IDs with
+[agent-session-launcher](https://github.com/JevonsCode/agent-session-launcher):
+in the same `<client-id>.json`, this component only reads `install`, while
+the session launcher component reads the other fields and ignores `install`.
+The two have no code dependency; each side's tests guard this convention.
 
-## 验证
+## Verification
 
 ```sh
 dart test
@@ -60,9 +72,10 @@ dart analyze
 AGENT_INSTALLER_BIN="$PWD/build/agent-installer" node --test test/node_binding_test.mjs
 ```
 
-测试都在临时目录中运行，不会改动本机真实的客户端配置。
+All tests run in a temporary directory and never touch the machine's real
+client configuration.
 
-## 命令行
+## CLI
 
 ```sh
 agent-installer scan --json
@@ -72,15 +85,20 @@ agent-installer apply   --clients claude-code,codex --product … --var …
 agent-installer remove  --clients cursor --product … --var …
 ```
 
-- `plan` 只预览，返回每个文件的变更与 diff，不写任何东西。
-- `apply`、`remove` 必须明确列出客户端，不会默认全选。
-- `--extensions` 默认是共享的本机扩展目录；`--backups` 默认是它旁边的
-  `backups/<product>`，每个文件保留最近 5 份原件。
-- `--json` 输出 `{ "version": 1, "ok": true, … }`；失败时 `ok: false` 并带 `error.code`，
-  退出码 1。完成但有组件被跳过时退出码 2，原因在每个客户端的 `problems` 里。
+- `plan` only previews: it returns the changes and diff for each file without
+  writing anything.
+- `apply` and `remove` must list clients explicitly; they never default to
+  all clients.
+- `--extensions` defaults to the shared local extensions directory;
+  `--backups` defaults to the `backups/<product>` folder next to it, keeping
+  the 5 most recent originals per file.
+- `--json` prints `{ "version": 1, "ok": true, … }`; on failure, `ok: false`
+  with `error.code` and exit code 1. When it finishes but some components
+  were skipped, the exit code is 2, with the reasons under each client's
+  `problems`.
 
-Node 宿主使用 `bindings/node/index.mjs`（类型见 `index.d.ts`）；Dart 宿主直接
-使用 `package:agent_installer/agent_installer.dart`：
+The Node host uses `bindings/node/index.mjs` (types in `index.d.ts`); a Dart
+host uses `package:agent_installer/agent_installer.dart` directly:
 
 ```dart
 final installer = AgentInstaller(
@@ -88,46 +106,50 @@ final installer = AgentInstaller(
   targets: InstallTargets.load(extensionsDirectory: defaultExtensionsDirectory()),
   backupDirectory: backupsPath,
 );
-final scans = installer.scan();               // 设置页列表
-final plan = installer.plan(['claude-code']); // 预览
-installer.apply(['claude-code']);             // 用户确认后
+final scans = installer.scan();               // settings page list
+final plan = installer.plan(['claude-code']); // preview
+installer.apply(['claude-code']);             // after user confirmation
 ```
 
-## 状态
+## Status
 
-每个客户端的 `state`：
+Each client's `state`:
 
-| 值 | 含义 |
+| Value | Meaning |
 | --- | --- |
-| `connected` | 所有组件都是最新 |
-| `update_available` | 部分组件缺失或过期 |
-| `not_connected` | 还没有安装任何组件 |
-| `conflict` | 有组件不能安全修改，见 `componentStates[].message` |
-| `manual` | 环境变量让客户端读取别的文件，需要手动配置 |
-| `unsupported` | 当前系统没有这个客户端，或它不接受该产品的任何组件 |
+| `connected` | All components are up to date |
+| `update_available` | Some components are missing or outdated |
+| `not_connected` | No component has been installed yet |
+| `conflict` | Some component cannot be modified safely; see `componentStates[].message` |
+| `manual` | An environment variable makes the client read a different file; manual configuration is needed |
+| `unsupported` | This client is not present on the current system, or it accepts none of the product's components |
 
-每个组件为 `current`、`outdated`、`missing`、`conflict` 或 `unsupported`（产品要装、
-客户端不支持）。`detected` 与 `evidence` 只说明找到了什么，不影响能否安装：用户可以
-给还没运行过的客户端预先安装。
+Each component is `current`, `outdated`, `missing`, `conflict`, or
+`unsupported` (the product wants to install it, but the client doesn't
+support it). `detected` and `evidence` only state what was found; they don't
+affect whether installation is possible: a user can pre-install for a client
+that has never been run.
 
-## 内置客户端
+## Built-in clients
 
-| ID | MCP | Hook | 说明文件 | Skills | 其他 |
+| ID | MCP | Hook | Instructions | Skills | Other |
 | --- | --- | --- | --- | --- | --- |
-| `claude-code` | `~/.claude.json` | `~/.claude/settings.json` | `~/.claude/CLAUDE.md` | `~/.claude/skills` | 权限白名单 |
-| `codex` | `{CODEX_HOME}/config.toml` | `hooks.json`，或 `config.toml` 中已有 Hook 表时写在那里 | `AGENTS.md`（`AGENTS.override.md` 有内容时写它） | `~/.agents/skills` | |
+| `claude-code` | `~/.claude.json` | `~/.claude/settings.json` | `~/.claude/CLAUDE.md` | `~/.claude/skills` | permission allowlist |
+| `codex` | `{CODEX_HOME}/config.toml` | `hooks.json`, or written into the existing hook table in `config.toml` if there is one | `AGENTS.md` (`AGENTS.override.md` if it has content) | `~/.agents/skills` | |
 | `cursor` | `~/.cursor/mcp.json` | `~/.cursor/hooks.json` | | `~/.cursor/skills` | |
-| `opencode` | `opencode.jsonc` 或 `opencode.json` | | | `skills` | `plugins/<产品>` |
-| `claude-desktop` | `claude_desktop_config.json`（macOS、Windows） | | | | |
-| `gemini-cli`、`kiro`、`qwen-code` | 各自的 `settings.json` / `mcp.json` | | | | |
+| `opencode` | `opencode.jsonc` or `opencode.json` | | | `skills` | `plugins/<product>` |
+| `claude-desktop` | `claude_desktop_config.json` (macOS, Windows) | | | | |
+| `gemini-cli`, `kiro`, `qwen-code` | each client's own `settings.json` / `mcp.json` | | | | |
 
-Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件，第一期没有内置；
-可以用扩展文件补充，验证后再加入内置目录。
+Hooks for Gemini CLI and Kiro, and deciding whether to install the OpenCode
+plugin based on its version, are not built in for the first release; they can
+be added through an extension file and promoted to the built-in catalog once
+verified.
 
-## 产品清单
+## Product manifest
 
-[JSON Schema](docs/manifest.schema.json)，示例见
-[`example/acme/acme.manifest.json`](example/acme/acme.manifest.json)。
+[JSON Schema](docs/manifest.schema.json), example at
+[`example/acme/acme.manifest.json`](example/acme/acme.manifest.json).
 
 ```json
 {
@@ -152,29 +174,42 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
 }
 ```
 
-- **占位符**：`{name}` 只做替换、从不求值，值由宿主用 `--var` 或 `variables` 传入；
-  另有 `{clientId}`、`{clientName}`。`${…}` 原样保留给客户端展开。未知占位符会报错。
-- **MCP**：`extra` 写入额外字段，例如 Codex 的 `startup_timeout_sec`。已有条目中用户
-  添加的字段会保留，`url`、`headers`、`type` 等传输字段会被替换。
-  同名条目只有在命令、参数或 URL 中含有 `markers` 里的某段文字时才算本产品的；
-  否则报冲突，安装和卸载都不会动它。`markers` 默认沿用 Hook 的标记，没有 Hook 时用
-  命令本身。条目里不写额外的标识字段，因为部分客户端重写配置时会丢掉不认识的字段。
-- **Hook**：事件名统一为 `sessionStart`、`userPromptSubmit`、`stop`、`agentResponse`
-  （带最终回复文字，目前只有 Cursor 的 `afterAgentResponse`）、`preCompact`，
-  由客户端映射到自己的名称；客户端不支持的事件会跳过。命令是参数数组，按平台引用
-  后写成一条命令。每条命令必须包含 `markers` 中的某段文字，组件靠它识别、更新和
-  卸载本产品的 Hook，所以手动或 AI 装过的旧条目也能被接管。
-- **说明**：默认标记为 `<!-- BEGIN <PRODUCT> MANAGED INSTRUCTIONS -->`，可用
-  `begin`、`end` 沿用产品已有的标记。
-- **Skills / 插件**：整目录复制，目标目录内写回执 `.agent-installer.json`。不覆盖不属于
-  本产品的同名目录；用户改过的目录会被保留并报告。
-- **按客户端覆盖**：`clients.<id>` 与上面的组件递归合并，`null` 表示这个客户端不装该
-  组件。
+- **Placeholders**: `{name}` is a plain substitution, never evaluated; its
+  value comes from the host via `--var` or `variables`. There are also
+  `{clientId}` and `{clientName}`. `${…}` is kept as-is for the client to
+  expand. An unknown placeholder is an error.
+- **MCP**: `extra` writes additional fields, e.g. Codex's
+  `startup_timeout_sec`. Fields a user added to an existing entry are kept;
+  transport fields such as `url`, `headers`, `type` are replaced. An entry
+  with the same name is only treated as belonging to this product if its
+  command, args, or URL contain one of the strings in `markers`; otherwise it
+  is reported as a conflict, and neither install nor remove touches it.
+  `markers` defaults to the hook's markers, or to the command itself if there
+  is no hook. No extra identifying field is written into the entry, because
+  some clients drop unrecognized fields when they rewrite the config.
+- **Hook**: event names are unified as `sessionStart`, `userPromptSubmit`,
+  `stop`, `agentResponse` (carries the final reply text; currently only
+  Cursor's `afterAgentResponse`), and `preCompact`; the client maps them to
+  its own names, and events a client doesn't support are skipped. The command
+  is an array of arguments, quoted per platform and joined into one command
+  line. Each command must contain one of the strings in `markers`, which the
+  component uses to recognize, update, and remove this product's hook — so an
+  old entry installed manually or by an AI can also be taken over.
+- **Instructions**: the default marker is
+  `<!-- BEGIN <PRODUCT> MANAGED INSTRUCTIONS -->`; `begin` and `end` can be
+  set to reuse a product's existing markers.
+- **Skills / plugins**: the whole directory is copied, and a receipt file
+  `.agent-installer.json` is written into the target directory. A
+  same-named directory that doesn't belong to this product is never
+  overwritten; a directory the user has modified is kept as-is and reported.
+- **Per-client overrides**: `clients.<id>` is merged recursively with the
+  components above; `null` means this client does not get that component.
 
-## 安装目标
+## Install targets
 
-本机私有 Agent 在扩展文件里写 `install` 段即可接入，字段见
-[extension.schema.json](https://github.com/JevonsCode/agent-session-launcher/blob/main/docs/extension.schema.json)：
+A local private Agent can be plugged in just by adding an `install` section
+to its extension file; see the fields in
+[extension.schema.json](https://github.com/JevonsCode/agent-session-launcher/blob/main/docs/extension.schema.json):
 
 ```json
 {
@@ -195,30 +230,44 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
 }
 ```
 
-- 路径只能从 `~/`、`{home}`（`home.env` 指定的环境变量或 `home.default`）、
-  `{configHome}`、`{appData}` 开始，不能包含 `..`。
-- 写入格式只能从内置格式中选：MCP 为 `claude-json`、`mcp-servers-json`、`kiro-json`、
-  `opencode-json`、`codex-toml`，Hook 为 `claude-hooks`、`codex-hooks`、`cursor-hooks`。
-- 文件名用内置 ID（如 `cursor.json`）时，`install` 中列出的键替换内置值，其余保留。
-- 只有 `install` 的文件不会成为会话打开组件的客户端。出错的扩展文件只跳过它自己，
-  原因在 `extensionErrors` 中。
+- A path can only start with `~/`, `{home}` (the environment variable named
+  by `home.env`, or `home.default`), `{configHome}`, or `{appData}`, and must
+  not contain `..`.
+- The write format must be one of the built-in formats: for MCP,
+  `claude-json`, `mcp-servers-json`, `kiro-json`, `opencode-json`,
+  `codex-toml`; for hooks, `claude-hooks`, `codex-hooks`, `cursor-hooks`.
+- When the file name uses a built-in ID (e.g. `cursor.json`), the keys listed
+  under `install` replace the built-in values; the rest are kept.
+- A file whose only field is `install` never becomes a client of the session
+  launcher component. An extension file with an error only skips itself; the
+  reason is in `extensionErrors`.
 
-## 写入安全
+## Write safety
 
-- 只修改本产品的条目：MCP 按名称，Hook 按标记，说明按首尾标记，目录按回执；其他
-  内容、顺序和注释保持不变（JSON 支持注释与尾逗号，TOML 按表编辑）。
-- 已是最新时不写文件；更新时在原位置替换，不移动到文件末尾。
-- 原子写入：先写同目录临时文件再替换，保留原文件权限，新文件为 0600；符号链接
-  保持为链接，写入它指向的文件。
-- 客户端在读写之间改了文件（Claude Code 会频繁改 `~/.claude.json`），组件会基于新
-  内容重新编辑，最多重试 3 次，不覆盖客户端的修改。
-- 卸载后文件只剩 `{}` 时删除该文件；卸载创建过的说明文件同理。
-- 从不修改客户端的信任存储。Codex 新增或改动 Hook 后，需要用户在 Codex 中用
-  `/hooks` 确认信任。
+- Only this product's own entries are modified: MCP by name, hooks by
+  marker, instructions by begin/end marker, directories by receipt; other
+  content, order, and comments are left unchanged (JSON supports comments and
+  trailing commas; TOML is edited table by table).
+- A file is not written if it is already up to date; an update replaces the
+  entry in place rather than moving it to the end of the file.
+- Writes are atomic: a temp file is written in the same directory and then
+  swapped in, the original file's permissions are kept, and a new file is
+  created with mode 0600; a symlink stays a symlink, and the write goes to
+  the file it points to.
+- If the client changes the file between the read and the write (Claude Code
+  frequently rewrites `~/.claude.json`), the component re-applies its edit
+  against the new content, retrying up to 3 times, and never overwrites the
+  client's own change.
+- After removal, a file that is left with only `{}` is deleted; the same
+  applies to an instructions file that removal created.
+- The client's trust store is never modified. After Codex gets a new or
+  changed hook, the user must confirm trust in Codex with `/hooks`.
 
-## 让 AI 安装
+## Installing via AI
 
-AI 可以直接使用命令行：先 `scan --json` 和 `status --json` 了解现状，再对用户选择的
-客户端 `plan`，把 diff 给用户确认后 `apply`。遇到不认识的 Agent，AI 根据该 Agent 的
-官方文档写出扩展文件的 `install` 段，再运行 `plan` 检查。这样安装的结果仍然可以查
-状态、更新和卸载。
+An AI can use the CLI directly: run `scan --json` and `status --json` first
+to see the current state, then `plan` for the clients the user picked, show
+the user the diff for confirmation, and then `apply`. For an Agent it
+doesn't recognize, the AI writes an `install` section in an extension file
+from that Agent's own documentation, then runs `plan` to check it. An install
+done this way can still be queried for status, updated, and removed.
