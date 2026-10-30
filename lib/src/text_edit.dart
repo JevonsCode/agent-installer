@@ -26,6 +26,33 @@ abstract final class CodexToml {
         : found.expand((_Section s) => s.lines).join('\n');
   }
 
+  /// The `args` of `[mcp_servers.<name>]`, or null when the table or the key
+  /// is missing or is not an array of strings.
+  static List<String>? serverArgs(String? text, String name) {
+    final _Section? table = _sections(
+      text,
+    ).where((s) => !s.array && s.name == 'mcp_servers.$name').firstOrNull;
+    if (table == null) return null;
+    final StringBuffer value = StringBuffer();
+    int depth = 0;
+    bool found = false;
+    for (final String line in table.lines.skip(1)) {
+      if (!found) {
+        final RegExpMatch? key = _keyLine.firstMatch(line);
+        if (key == null || _unquote(key.group(1)!) != 'args') continue;
+        found = true;
+        final String rest = line.substring(key.end);
+        value.writeln(rest);
+        depth = _bracketDepth(rest);
+      } else {
+        value.writeln(line);
+        depth += _bracketDepth(line);
+      }
+      if (depth <= 0) break;
+    }
+    return found ? _stringArray(value.toString()) : null;
+  }
+
   /// Replaces the body of `[mcp_servers.<name>]`, keeping its sub-tables, or
   /// appends the table.
   static String setServer(
@@ -228,6 +255,74 @@ List<String> _foreignLines(List<String> body, Set<String> owned) {
 }
 
 final RegExp _keyLine = RegExp(r'''^\s*("[^"]*"|'[^']*'|[A-Za-z0-9_-]+)\s*=''');
+
+/// Parses a TOML array of basic or literal strings, with comments and
+/// newlines between items; null for anything else.
+List<String>? _stringArray(String text) {
+  final List<String> items = <String>[];
+  int i = 0;
+  void skip() {
+    while (i < text.length) {
+      final String c = text[i];
+      if (c == '#') {
+        while (i < text.length && text[i] != '\n') {
+          i++;
+        }
+      } else if (c.trim().isEmpty) {
+        i++;
+      } else {
+        return;
+      }
+    }
+  }
+
+  skip();
+  if (i >= text.length || text[i] != '[') return null;
+  i++;
+  while (true) {
+    skip();
+    if (i >= text.length) return null;
+    if (text[i] == ']') return items;
+    final String quote = text[i];
+    if (quote != '"' && quote != "'") return null;
+    final StringBuffer item = StringBuffer();
+    i++;
+    while (true) {
+      if (i >= text.length || text[i] == '\n') return null;
+      final String c = text[i++];
+      if (c == quote) break;
+      if (c != r'\' || quote == "'") {
+        item.write(c);
+        continue;
+      }
+      if (i >= text.length) return null;
+      final String e = text[i++];
+      switch (e) {
+        case 'n':
+          item.write('\n');
+        case 't':
+          item.write('\t');
+        case 'r':
+          item.write('\r');
+        case 'u' || 'U':
+          final int length = e == 'u' ? 4 : 8;
+          final int? code = i + length <= text.length
+              ? int.tryParse(text.substring(i, i + length), radix: 16)
+              : null;
+          if (code == null) return null;
+          item.writeCharCode(code);
+          i += length;
+        case '"' || r'\':
+          item.write(e);
+        default:
+          return null;
+      }
+    }
+    items.add(item.toString());
+    skip();
+    if (i < text.length && text[i] == ',') i++;
+  }
+}
 
 String _unquote(String key) =>
     key.length > 1 && (key.startsWith('"') || key.startsWith("'"))

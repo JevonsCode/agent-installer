@@ -198,17 +198,20 @@ String? _existingMcp(String path, String format, String name) {
 }
 
 TextPart _mcpPart(String file, String format, McpSpec mcp) {
+  // The person's value of a preserved option survives an update.
+  List<String> args(List<String>? existing) =>
+      keepOptions(mcp.args, existing, mcp.preserveArgs);
   if (format == 'codex-toml') {
-    final Map<String, Object?> entry = <String, Object?>{
+    Map<String, Object?> entry(String? t) => <String, Object?>{
       'command': mcp.command,
-      'args': mcp.args,
+      'args': args(CodexToml.serverArgs(t, mcp.name)),
       if (mcp.env.isNotEmpty) 'env': mcp.env,
       ...mcp.extra,
     };
     return TextPart(
       'mcp',
       file,
-      (t) => CodexToml.setServer(t, mcp.name, entry),
+      (t) => CodexToml.setServer(t, mcp.name, entry(t)),
       (t) => CodexToml.removeServer(t, mcp.name),
       (t) => CodexToml.hasServer(t, mcp.name),
     );
@@ -217,31 +220,40 @@ TextPart _mcpPart(String file, String format, McpSpec mcp) {
     format == 'opencode-json' ? 'mcp' : 'mcpServers',
     mcp.name,
   ];
-  final Map<String, Object?> ours = switch (format) {
-    'opencode-json' => <String, Object?>{
-      'type': 'local',
-      'command': <String>[mcp.command, ...mcp.args],
-      'enabled': true,
-      if (mcp.env.isNotEmpty) 'environment': mcp.env,
-    },
-    'claude-json' => <String, Object?>{
-      'type': 'stdio',
+  Map<String, Object?> ours(Object? existing) {
+    List<String>? strings(Object? value) =>
+        value is List && value.every((v) => v is String)
+        ? value.cast<String>()
+        : null;
+    final Map<Object?, Object?>? old = existing is Map ? existing : null;
+    if (format == 'opencode-json') {
+      final List<String>? command = strings(old?['command']);
+      return <String, Object?>{
+        'type': 'local',
+        'command': <String>[
+          mcp.command,
+          ...args(
+            command == null || command.isEmpty
+                ? null
+                : command.skip(1).toList(),
+          ),
+        ],
+        'enabled': true,
+        if (mcp.env.isNotEmpty) 'environment': mcp.env,
+        ...mcp.extra,
+      };
+    }
+    final List<String> merged = args(strings(old?['args']));
+    return <String, Object?>{
+      if (format == 'claude-json') 'type': 'stdio',
       'command': mcp.command,
-      'args': mcp.args,
+      'args': merged,
       if (mcp.env.isNotEmpty) 'env': mcp.env,
-    },
-    'kiro-json' => <String, Object?>{
-      'command': mcp.command,
-      'args': mcp.args,
-      if (mcp.env.isNotEmpty) 'env': mcp.env,
-      'disabled': false,
-    },
-    _ => <String, Object?>{
-      'command': mcp.command,
-      'args': mcp.args,
-      if (mcp.env.isNotEmpty) 'env': mcp.env,
-    },
-  }..addAll(mcp.extra);
+      if (format == 'kiro-json') 'disabled': false,
+      ...mcp.extra,
+    };
+  }
+
   Object? current(String? t) {
     final Object? servers = _root(t)[key.first];
     if (servers != null && servers is! Map) {
@@ -260,7 +272,7 @@ TextPart _mcpPart(String file, String format, McpSpec mcp) {
         if (existing is Map<String, Object?>)
           for (final MapEntry<String, Object?> e in existing.entries)
             if (!_transportKeys.contains(e.key)) e.key: e.value,
-        ...ours,
+        ...ours(existing),
       };
       return deepEquals(existing, desired) ? t : JsonEdit.set(t, key, desired);
     },
@@ -275,6 +287,44 @@ TextPart _mcpPart(String file, String format, McpSpec mcp) {
     },
     (t) => current(t) != null,
   );
+}
+
+/// [desired] with the value [existing] gives each option in [names], as
+/// `--name value` or `--name=value`: replaced where [desired] has the option,
+/// appended where it does not. A value starting with `-` is not taken.
+List<String> keepOptions(
+  List<String> desired,
+  List<String>? existing,
+  List<String> names,
+) {
+  if (existing == null || names.isEmpty) return desired;
+  final List<String> result = <String>[...desired];
+  for (final String name in names) {
+    final (int, int)? theirs = _optionAt(existing, name);
+    if (theirs == null) continue;
+    final List<String> kept = existing.sublist(
+      theirs.$1,
+      theirs.$1 + theirs.$2,
+    );
+    final (int, int)? mine = _optionAt(result, name);
+    if (mine == null) {
+      result.addAll(kept);
+    } else {
+      result.replaceRange(mine.$1, mine.$1 + mine.$2, kept);
+    }
+  }
+  return result;
+}
+
+/// Where option [name] starts in [args] and how many arguments it spans.
+(int, int)? _optionAt(List<String> args, String name) {
+  for (int i = 0; i < args.length; i++) {
+    if (args[i].startsWith('$name=')) return (i, 1);
+    if (args[i] == name) {
+      return (i, i + 1 < args.length && !args[i + 1].startsWith('-') ? 2 : 1);
+    }
+  }
+  return null;
 }
 
 const Set<String> _transportKeys = <String>{

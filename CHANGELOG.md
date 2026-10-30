@@ -32,3 +32,7 @@
   argument that is not plain written as a single-quoted literal (`''` for a
   quote inside). Other clients and platforms are unchanged. An existing
   Codex hook carrying the product's marker is rewritten on the next `apply`.
+- New manifest field `mcp.preserveArgs`: options such as `--tool-profile`
+  whose value the person chose in the product's existing entry are kept on
+  update (Codex TOML, JSON `args` and OpenCode `command` alike), replacing
+  the manifest's value or appended when the manifest has none.

@@ -211,6 +211,10 @@ verified.
   `markers` defaults to the hook's markers, or to the command itself if there
   is no hook. No extra identifying field is written into the entry, because
   some clients drop unrecognized fields when they rewrite the config.
+  `preserveArgs` (e.g. `["--tool-profile"]`) names options whose value the
+  person chose in the product's existing entry: on update that `--name value`
+  or `--name=value` replaces the manifest's value, or is appended when the
+  manifest has none.
 - **Hook**: event names are unified as `sessionStart`, `userPromptSubmit`,
   `stop`, `agentResponse` (carries the final reply text; currently only
   Cursor's `afterAgentResponse`), and `preCompact`; the client maps them to

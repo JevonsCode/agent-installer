@@ -12,6 +12,7 @@ final class McpSpec {
     this.env,
     this.extra, {
     this.markers = const <String>[],
+    this.preserveArgs = const <String>[],
   });
   final String name;
   final String command;
@@ -25,8 +26,19 @@ final class McpSpec {
   /// A same-name entry without it belongs to someone else.
   final List<String> markers;
 
-  McpSpec withMarkers(List<String> value) =>
-      McpSpec(name, command, args, env, extra, markers: value);
+  /// Options such as `--profile` whose value in the product's existing entry
+  /// is kept on update, because the person chose it.
+  final List<String> preserveArgs;
+
+  McpSpec withMarkers(List<String> value) => McpSpec(
+    name,
+    command,
+    args,
+    env,
+    extra,
+    markers: value,
+    preserveArgs: preserveArgs,
+  );
 
   bool isOurs(String entryText) => markers.any(entryText.contains);
 }
@@ -214,6 +226,7 @@ final class ProductManifest {
         'env',
         'extra',
         'markers',
+        'preserveArgs',
       }, '$path.mcp');
       final String name = _text(m['name'], '$path.mcp.name', 64);
       if (!RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(name)) {
@@ -244,6 +257,13 @@ final class ProductManifest {
             '$path.mcp.markers',
           ).indexed)
             _text(v, '$path.mcp.markers[$i]', 128),
+        ],
+        preserveArgs: <String>[
+          for (final (int i, Object? v) in _list(
+            m['preserveArgs'],
+            '$path.mcp.preserveArgs',
+          ).indexed)
+            _option(v, '$path.mcp.preserveArgs[$i]'),
         ],
       );
     }
@@ -505,6 +525,14 @@ String _text(Object? value, String path, int maxLength) {
     );
   }
   return value;
+}
+
+String _option(Object? value, String path) {
+  final String text = _text(value, path, 64);
+  if (!RegExp(r'^--?[A-Za-z0-9][A-Za-z0-9_.-]*$').hasMatch(text)) {
+    invalidManifest(path, 'must be an option name such as --profile.');
+  }
+  return text;
 }
 
 void _keys(Map<String, Object?> json, Set<String> allowed, String path) {

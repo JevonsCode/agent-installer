@@ -29,6 +29,31 @@ void main() {
     );
   });
 
+  test('kept options replace or extend the desired arguments', () {
+    const List<String> desired = <String>['--source', 'X', '--profile', 'a'];
+    expect(
+      keepOptions(desired, <String>['--profile', 'b'], <String>['--profile']),
+      <String>['--source', 'X', '--profile', 'b'],
+    );
+    expect(
+      keepOptions(desired, <String>['--profile=c'], <String>['--profile']),
+      <String>['--source', 'X', '--profile=c'],
+    );
+    expect(
+      keepOptions(
+        <String>['--source', 'X'],
+        <String>['--other', '--level', '2'],
+        <String>['--profile', '--level'],
+      ),
+      <String>['--source', 'X', '--level', '2'],
+    );
+    expect(
+      keepOptions(desired, null, <String>['--profile']),
+      desired,
+      reason: 'a new entry gets the manifest values',
+    );
+  });
+
   test('POSIX and cmd quoting are unchanged', () {
     expect(
       shellCommand(<String>['/opt/x', "it's", 'a b'], windows: false),

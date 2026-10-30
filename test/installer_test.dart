@@ -484,6 +484,79 @@ void main() {
     );
   });
 
+  test('preserved options keep the value the person chose', () {
+    final ProductManifest product = acme(
+      override: <String, Object?>{
+        'mcp': <String, Object?>{
+          'name': 'acme',
+          'command': '{acmeMcp}',
+          'args': <String>[
+            '--source',
+            '{clientName}',
+            '--tool-profile',
+            'basic',
+          ],
+          'preserveArgs': <String>['--tool-profile'],
+        },
+      },
+    );
+    write(
+      '.codex/config.toml',
+      '[mcp_servers.acme]\ncommand = "/usr/local/bin/acme_mcp"\n'
+          'args = [\n  "--tool-profile", # chosen by hand\n  "full",\n]\n',
+    );
+    write(
+      '.cursor/mcp.json',
+      '{"mcpServers":{"acme":{"command":"acme_mcp","args":["--tool-profile=lite"]}}}',
+    );
+    write(
+      '.config/opencode/opencode.json',
+      '{"mcp":{"acme":{"type":"local","command":["acme_mcp","--tool-profile","x"]}}}',
+    );
+    final AgentInstaller i = installer(product: product);
+    i.apply(<String>['codex', 'cursor', 'opencode', 'claude-code']);
+    expect(
+      read('.codex/config.toml'),
+      contains('args = ["--source", "Codex", "--tool-profile", "full"]'),
+    );
+    expect(
+      ((json('.cursor/mcp.json')['mcpServers']! as Map)['acme']!
+          as Map)['args'],
+      <String>['--source', 'Cursor', '--tool-profile=lite'],
+    );
+    expect(
+      ((json('.config/opencode/opencode.json')['mcp']! as Map)['acme']!
+          as Map)['command'],
+      <String>[
+        '/opt/acme/bin/acme_mcp',
+        '--source',
+        'OpenCode',
+        '--tool-profile',
+        'x',
+      ],
+    );
+    expect(
+      ((json('.claude.json')['mcpServers']! as Map)['acme']! as Map)['args'],
+      <String>['--source', 'Claude Code', '--tool-profile', 'basic'],
+      reason: 'a new entry gets the manifest default',
+    );
+    for (final String id in <String>['codex', 'cursor', 'opencode']) {
+      expect(states(status(i, id))['mcp'], 'current', reason: id);
+    }
+    expect(
+      () => acme(
+        override: <String, Object?>{
+          'mcp': <String, Object?>{
+            'name': 'acme',
+            'command': '{acmeMcp}',
+            'preserveArgs': <String>['tool profile'],
+          },
+        },
+      ),
+      throwsA(isA<AgentInstallException>()),
+    );
+  });
+
   test('the MCP command must carry a marker', () {
     expect(
       () => acme(
