@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_installer/agent_installer.dart';
+import 'package:agent_installer/src/installer.dart' show renameDirectory;
 import 'package:test/test.dart';
 
 late Directory home;
@@ -709,6 +710,56 @@ void main() {
     );
     expect(File('${removed.path}/OLD.md').readAsStringSync(), 'old 6');
     expect(skillBackups(), hasLength(5));
+  });
+
+  test('a skill directory in use is updated in place', () {
+    final void Function(String, String) rename = renameDirectory;
+    addTearDown(() => renameDirectory = rename);
+    final String skill = '${home.path}/.cursor/skills/acme-helper';
+    int errorCode = Platform.isWindows ? 32 : 16;
+    renameDirectory = (from, to) {
+      if (from.replaceAll(r'\', '/') == skill.replaceAll(r'\', '/')) {
+        throw FileSystemException(
+          'Rename failed',
+          from,
+          OSError('in use', errorCode),
+        );
+      }
+      rename(from, to);
+    };
+    final AgentInstaller i = installer();
+    i.apply(<String>['cursor']);
+    void makeOutdated() {
+      final File receipt = File('$skill/.agent-installer.json');
+      final Map<String, Object?> data =
+          jsonDecode(receipt.readAsStringSync()) as Map<String, Object?>;
+      write('.cursor/skills/acme-helper/nested/OLD.md', 'old');
+      (data['files']! as Map<String, Object?>)['nested/OLD.md'] = fnv1a(
+        utf8.encode('old'),
+      );
+      receipt.writeAsStringSync(jsonEncode(data));
+    }
+
+    makeOutdated();
+    final ClientResult applied = i.apply(<String>['cursor']).single;
+    expect(applied.problems, isEmpty);
+    expect(
+      applied.changes.firstWhere((c) => c.components.contains('skills')).note,
+      contains('in place'),
+    );
+    expect(File('$skill/nested/OLD.md').existsSync(), isFalse);
+    expect(states(status(i, 'cursor'))['skills'], 'current');
+    expect(
+      Directory('${home.path}/.cursor/skills').listSync().map((e) => e.path),
+      hasLength(1),
+      reason: 'no staging copy is left behind',
+    );
+
+    errorCode = 2;
+    makeOutdated();
+    final ClientResult failed = i.apply(<String>['cursor']).single;
+    expect(failed.problems, contains(contains('could not be replaced')));
+    expect(File('$skill/nested/OLD.md').existsSync(), isTrue);
   });
 
   test('outdated skills are replaced', () {

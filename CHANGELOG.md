@@ -47,3 +47,8 @@
   or removed, as `<backups>/<client-id>/<name>.<UTC time>.bak/`, with the
   same retention as file backups (the 5 most recent per name). Retention now
   matches only the installer's own `<name>.<time>.bak` entries.
+- Windows: when a skill or plugin directory cannot be renamed because the
+  client holds it open (sharing, lock or access violation), its files are
+  updated in place, the receipt last, and the change reports it in the new
+  `note` field. Other failures leave the directory as it was and are
+  reported under `problems` instead of aborting the run.

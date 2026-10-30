@@ -167,6 +167,7 @@ int _run(List<String> arguments, bool json) {
       if (r.changes.isEmpty) stdout.writeln('  no changes');
       for (final PlannedChange c in r.changes) {
         stdout.writeln('  ${c.action} ${c.path} [${c.components.join(', ')}]');
+        if (c.note != null) stdout.writeln('      ${c.note}');
         if (command == 'plan' && c.diff != null) {
           for (final String line in c.diff!.split('\n')) {
             stdout.writeln('      $line');

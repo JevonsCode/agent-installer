@@ -299,6 +299,11 @@ to its extension file; see the fields in
   skill or plugin directory before it is replaced or removed, is copied to
   `<backups>/<client-id>/<name>.<UTC time>.bak` (private to the user); the
   5 most recent copies per name are kept.
+- A skill or plugin directory is replaced by renaming a staged copy into
+  place. When the client holds the directory open and Windows refuses the
+  rename, its files are updated in place instead and the change carries a
+  `note` saying so; any other failure leaves the directory as it was and is
+  reported under `problems`.
 - After removal, a file that is left with only `{}` is deleted; the same
   applies to an instructions file that removal created.
 - The client's trust store is never modified. After Codex gets a new or

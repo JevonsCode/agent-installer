@@ -84,7 +84,13 @@ final class ClientStatus {
 
 /// One file or directory a plan would change.
 final class PlannedChange {
-  const PlannedChange(this.path, this.components, this.action, [this.diff]);
+  const PlannedChange(
+    this.path,
+    this.components,
+    this.action, [
+    this.diff,
+    this.note,
+  ]);
   final String path;
   final List<String> components;
 
@@ -93,11 +99,16 @@ final class PlannedChange {
   final String action;
   final String? diff;
 
+  /// How the change was made when that differs from the usual way, e.g. a
+  /// directory in use whose files were updated in place.
+  final String? note;
+
   Map<String, Object?> toJson() => <String, Object?>{
     'path': path,
     'components': components,
     'action': action,
     'diff': ?diff,
+    'note': ?note,
   };
 }
 
@@ -412,19 +423,42 @@ final class AgentInstaller {
         if (write) _writeReceipt(part.target, state.source!, resolved);
         return PlannedChange(shown, <String>[part.component], 'adopt');
       }
-      final PlannedChange change = PlannedChange(shown, <String>[
-        part.component,
-      ], state.state == 'missing' ? 'create' : 'update');
-      if (write) {
+      final String action = state.state == 'missing' ? 'create' : 'update';
+      if (!write) return PlannedChange(shown, <String>[part.component], action);
+      try {
         _backupDirectory(clientId, part.target);
-        _copyDirectory(part, state.source!, resolved);
+        final bool inPlace = _copyDirectory(part, state.source!, resolved);
+        return PlannedChange(
+          shown,
+          <String>[part.component],
+          action,
+          null,
+          inPlace
+              ? 'The directory was in use, so its files were updated in place.'
+              : null,
+        );
+      } on FileSystemException catch (error) {
+        problems.add(
+          '${part.component}: $shown: it could not be replaced '
+          '(${error.osError?.message ?? error.message}); close the client '
+          'and try again.',
+        );
+        return null;
       }
-      return change;
     }
     if (state.state == 'missing') return null;
     if (write) {
-      _backupDirectory(clientId, part.target);
-      Directory(part.target).deleteSync(recursive: true);
+      try {
+        _backupDirectory(clientId, part.target);
+        Directory(part.target).deleteSync(recursive: true);
+      } on FileSystemException catch (error) {
+        problems.add(
+          '${part.component}: $shown: it could not be removed '
+          '(${error.osError?.message ?? error.message}); close the client '
+          'and try again.',
+        );
+        return null;
+      }
     }
     return PlannedChange(shown, <String>[part.component], 'delete');
   }
@@ -502,7 +536,10 @@ final class AgentInstaller {
     );
   }
 
-  void _copyDirectory(
+  /// Replaces the directory with a staged copy, renaming it out of the way.
+  /// When the client holds the directory open (Windows refuses to rename it)
+  /// the files are updated in place instead, and true is returned.
+  bool _copyDirectory(
     DirectoryPart part,
     Map<String, String> files,
     ResolvedProduct resolved,
@@ -530,9 +567,59 @@ final class AgentInstaller {
       ).copySync(to.path);
     }
     _writeReceipt(staging.path, files, resolved);
-    if (target.existsSync()) target.renameSync(old.path);
-    staging.renameSync(target.path);
+    if (target.existsSync()) {
+      try {
+        renameDirectory(target.path, old.path);
+      } on FileSystemException catch (error) {
+        if (!_inUse(error)) rethrow;
+        _updateInPlace(staging, target);
+        staging.deleteSync(recursive: true);
+        return true;
+      }
+    }
+    try {
+      renameDirectory(staging.path, target.path);
+    } on Object {
+      // Put the previous version back rather than leave nothing behind.
+      if (old.existsSync() && !target.existsSync()) {
+        renameDirectory(old.path, target.path);
+      }
+      rethrow;
+    }
     if (old.existsSync()) old.deleteSync(recursive: true);
+    return false;
+  }
+
+  /// Copies every staged file over [target], the receipt last, and deletes
+  /// the files the new version no longer has.
+  void _updateInPlace(Directory staging, Directory target) {
+    final String receipt = '${env.separator}$_receipt';
+    final Set<String> staged = <String>{
+      for (final FileSystemEntity e in staging.listSync(recursive: true))
+        if (e is File) e.path.substring(staging.path.length),
+    };
+    for (final String relative in <String>[
+      ...staged.where((r) => r != receipt),
+      receipt,
+    ]) {
+      final File to = File('${target.path}$relative');
+      to.parent.createSync(recursive: true);
+      File('${staging.path}$relative').copySync(to.path);
+    }
+    for (final FileSystemEntity e in target.listSync(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (e is File && !staged.contains(e.path.substring(target.path.length))) {
+        e.deleteSync();
+      }
+    }
+  }
+
+  /// A sharing, lock or access violation on Windows, or EBUSY elsewhere.
+  bool _inUse(FileSystemException error) {
+    final int? code = error.osError?.errorCode;
+    return env.windows ? const <int>{5, 32, 33}.contains(code) : code == 16;
   }
 
   void _writeReceipt(
@@ -691,6 +778,10 @@ final class AgentInstaller {
     }
   }
 }
+
+/// Renames a directory; tests replace it to simulate a directory in use.
+void Function(String from, String to) renameDirectory = (from, to) =>
+    Directory(from).renameSync(to);
 
 void _restrict(String path, int mode) {
   if (Platform.isWindows) return;

@@ -40,6 +40,8 @@ export interface PlannedChange {
   /** `adopt`: an existing directory that already holds the product's files gets its receipt. */
   action: 'create' | 'update' | 'delete' | 'adopt';
   diff?: string;
+  /** How the change was made when that differs, e.g. a directory in use updated in place. */
+  note?: string;
 }
 
 export interface ClientResult {
