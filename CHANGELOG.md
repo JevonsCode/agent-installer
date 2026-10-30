@@ -36,3 +36,10 @@
   whose value the person chose in the product's existing entry are kept on
   update (Codex TOML, JSON `args` and OpenCode `command` alike), replacing
   the manifest's value or appended when the manifest has none.
+- Skill and plugin directories without an `.agent-installer.json` receipt
+  are adopted instead of reported as `conflict` when their files already
+  equal the product's (the plan shows the new change action `adopt`, and
+  only the receipt is written), or when the manifest's new
+  `adopt: { file, contains? }` marker is found in them (then they are
+  replaced). A directory carrying another product's receipt is never
+  adopted; anything else stays a `conflict`.

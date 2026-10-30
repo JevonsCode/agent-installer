@@ -234,6 +234,11 @@ verified.
   `.agent-installer.json` is written into the target directory. A
   same-named directory that doesn't belong to this product is never
   overwritten; a directory the user has modified is kept as-is and reported.
+  A directory without a receipt is adopted (only the receipt is written; the
+  change's action is `adopt`) when its files already equal the product's.
+  With `"adopt": { "file": "SKILL.md", "contains": "name: acme-helper" }` a
+  directory holding that marker is taken over and replaced as well. A
+  directory with another product's receipt is never adopted.
 - **Per-client overrides**: `clients.<id>` is merged recursively with the
   components above; `null` means this client does not get that component.
 

@@ -191,7 +191,10 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
 - **说明**：默认标记为 `<!-- BEGIN <PRODUCT> MANAGED INSTRUCTIONS -->`，可用
   `begin`、`end` 沿用产品已有的标记。
 - **Skills / 插件**：整目录复制，目标目录内写回执 `.agent-installer.json`。不覆盖不属于
-  本产品的同名目录；用户改过的目录会被保留并报告。
+  本产品的同名目录；用户改过的目录会被保留并报告。没有回执、但文件与产品完全一致的
+  目录会被接管（只写回执，变更类型为 `adopt`）；清单写了
+  `"adopt": { "file": "SKILL.md", "contains": "name: acme-helper" }` 时，带这个标记的
+  目录也会被接管并替换。带其他产品回执的目录永远不会被接管。
 - **按客户端覆盖**：`clients.<id>` 与上面的组件递归合并，`null` 表示这个客户端不装该
   组件。
 

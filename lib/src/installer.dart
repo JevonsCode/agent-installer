@@ -88,7 +88,8 @@ final class PlannedChange {
   final String path;
   final List<String> components;
 
-  /// `create`, `update` or `delete`.
+  /// `create`, `update`, `delete`, or `adopt` when an existing directory
+  /// that already holds the product's files only gets its receipt.
   final String action;
   final String? diff;
 
@@ -403,7 +404,12 @@ final class AgentInstaller {
       return null;
     }
     if (install) {
-      if (state.state == 'current') return null;
+      if (state.state == 'current') {
+        if (!state.adopt) return null;
+        // Already the product's files: only the receipt is added.
+        if (write) _writeReceipt(part.target, state.source!, resolved);
+        return PlannedChange(shown, <String>[part.component], 'adopt');
+      }
       final PlannedChange change = PlannedChange(shown, <String>[
         part.component,
       ], state.state == 'missing' ? 'create' : 'update');
@@ -429,20 +435,50 @@ final class AgentInstaller {
     if (!target.existsSync()) return _DirState('missing', null, source: source);
     final File receiptFile = File('${part.target}${env.separator}$_receipt');
     Map<String, Object?>? receipt;
+    bool foreign = false;
     try {
       final Object? json = jsonDecode(receiptFile.readAsStringSync());
-      if (json is Map<String, Object?> && json['product'] == resolved.product)
+      if (json is Map<String, Object?> && json['product'] == resolved.product) {
         receipt = json;
+      } else {
+        foreign = json is Map<String, Object?> && json['product'] is String;
+      }
     } on Object {
       receipt = null;
     }
+    final Map<String, String> actual;
+    try {
+      actual = _hashTree(part.target)..remove(_receipt);
+    } on Object {
+      return _DirState('conflict', 'It cannot be read.');
+    }
     if (receipt == null || receipt['files'] is! Map) {
+      // A directory without the product's receipt is taken over only when it
+      // already holds exactly the product's files, or carries the marker the
+      // manifest names; another product's receipt is never taken over.
+      if (!foreign && deepEquals(actual, source)) {
+        return _DirState(
+          'current',
+          null,
+          source: source,
+          ours: true,
+          adopt: true,
+        );
+      }
+      if (!foreign && _hasAdoptMarker(part)) {
+        return _DirState(
+          'outdated',
+          null,
+          source: source,
+          ours: true,
+          adopt: true,
+        );
+      }
       return _DirState(
         'conflict',
         'It exists and is not managed by ${product.name}.',
       );
     }
-    final Map<String, String> actual = _hashTree(part.target)..remove(_receipt);
     if (!deepEquals(actual, receipt['files'])) {
       return _DirState(
         'conflict',
@@ -485,12 +521,33 @@ final class AgentInstaller {
         '${part.source}${env.separator}${_native(relative)}',
       ).copySync(to.path);
     }
-    File('${staging.path}${env.separator}$_receipt').writeAsStringSync(
-      '${const JsonEncoder.withIndent('  ').convert(<String, Object?>{'product': resolved.product, 'version': resolved.version, 'files': files})}\n',
-    );
+    _writeReceipt(staging.path, files, resolved);
     if (target.existsSync()) target.renameSync(old.path);
     staging.renameSync(target.path);
     if (old.existsSync()) old.deleteSync(recursive: true);
+  }
+
+  void _writeReceipt(
+    String directory,
+    Map<String, String> files,
+    ResolvedProduct resolved,
+  ) => File('$directory${env.separator}$_receipt').writeAsStringSync(
+    '${const JsonEncoder.withIndent('  ').convert(<String, Object?>{'product': resolved.product, 'version': resolved.version, 'files': files})}\n',
+  );
+
+  bool _hasAdoptMarker(DirectoryPart part) {
+    final AdoptMarker? marker = part.adopt;
+    if (marker == null) return false;
+    final File file = File(
+      '${part.target}${env.separator}${_native(marker.file)}',
+    );
+    try {
+      if (!file.existsSync()) return false;
+      return marker.contains == null ||
+          file.readAsStringSync().contains(marker.contains!);
+    } on Object {
+      return false;
+    }
   }
 
   Map<String, String> _hashTree(String root) {
@@ -635,11 +692,20 @@ TargetScan scanTarget(InstallTarget target, InstallEnvironment env) {
 }
 
 final class _DirState {
-  _DirState(this.state, this.message, {this.source, this.ours = false});
+  _DirState(
+    this.state,
+    this.message, {
+    this.source,
+    this.ours = false,
+    this.adopt = false,
+  });
   final String state;
   final String? message;
   final Map<String, String>? source;
   final bool ours;
+
+  /// The directory has no receipt yet and is taken over on install.
+  final bool adopt;
 }
 
 const String _receipt = '.agent-installer.json';

@@ -37,7 +37,8 @@ export interface PlannedChange {
   /** Shown relative to the home directory, e.g. `~/.claude.json`. */
   path: string;
   components: Component[];
-  action: 'create' | 'update' | 'delete';
+  /** `adopt`: an existing directory that already holds the product's files gets its receipt. */
+  action: 'create' | 'update' | 'delete' | 'adopt';
   diff?: string;
 }
 

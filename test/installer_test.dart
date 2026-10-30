@@ -590,6 +590,85 @@ void main() {
     expect(read('.claude/skills/acme-helper/SKILL.md'), 'edited by hand');
   });
 
+  test('a skill already holding the product files is adopted', () {
+    final String skill = '${home.path}/.cursor/skills/acme-helper';
+    Directory(skill).createSync(recursive: true);
+    File('$bundle/skills/acme-helper/SKILL.md').copySync('$skill/SKILL.md');
+    final AgentInstaller i = installer();
+    expect(states(status(i, 'cursor'))['skills'], 'current');
+    final PlannedChange planned = i
+        .plan(<String>['cursor'])
+        .single
+        .changes
+        .firstWhere((c) => c.components.contains('skills'));
+    expect(planned.action, 'adopt');
+    expect(File('$skill/.agent-installer.json').existsSync(), isFalse);
+
+    final ClientResult applied = i.apply(<String>['cursor']).single;
+    expect(applied.problems, isEmpty);
+    expect(File('$skill/.agent-installer.json').existsSync(), isTrue);
+    expect(
+      i.plan(<String>['cursor']).single.changes,
+      isEmpty,
+      reason: 'adopted once',
+    );
+    i.remove(<String>['cursor']);
+    expect(Directory(skill).existsSync(), isFalse);
+  });
+
+  test('an adoption marker takes over a different skill directory', () {
+    write('.cursor/skills/acme-helper/SKILL.md', 'name: acme-helper\nold\n');
+    write('.claude/skills/acme-helper/SKILL.md', 'name: other\n');
+    write(
+      '.agents/skills/acme-helper/.agent-installer.json',
+      '{"product":"other","files":{}}',
+    );
+    write('.agents/skills/acme-helper/SKILL.md', 'name: acme-helper\n');
+    final AgentInstaller i = installer(
+      product: acme(
+        override: <String, Object?>{
+          'skills': <Object?>[
+            <String, Object?>{
+              'name': 'acme-helper',
+              'source': '{bundle}/skills/acme-helper',
+              'adopt': <String, Object?>{
+                'file': 'SKILL.md',
+                'contains': 'name: acme-helper',
+              },
+            },
+          ],
+        },
+      ),
+    );
+    expect(states(status(i, 'cursor'))['skills'], 'outdated');
+    expect(states(status(i, 'claude-code'))['skills'], 'conflict');
+    expect(
+      states(status(i, 'codex'))['skills'],
+      'conflict',
+      reason: 'another product\'s receipt is never taken over',
+    );
+    i.apply(<String>['cursor']);
+    expect(
+      read('.cursor/skills/acme-helper/SKILL.md'),
+      File('$bundle/skills/acme-helper/SKILL.md').readAsStringSync(),
+    );
+    expect(states(status(i, 'cursor'))['skills'], 'current');
+    expect(read('.claude/skills/acme-helper/SKILL.md'), 'name: other\n');
+    expect(
+      () => acme(
+        override: <String, Object?>{
+          'skills': <Object?>[
+            <String, Object?>{
+              'source': '{bundle}/skills/acme-helper',
+              'adopt': <String, Object?>{'file': '../SKILL.md'},
+            },
+          ],
+        },
+      ),
+      throwsA(isA<AgentInstallException>()),
+    );
+  });
+
   test('outdated skills are replaced', () {
     final AgentInstaller i = installer();
     i.apply(<String>['claude-code']);

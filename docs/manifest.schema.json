@@ -108,7 +108,17 @@
       "required": ["source"],
       "properties": {
         "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
-        "source": { "type": "string", "description": "Absolute directory in the product bundle." }
+        "source": { "type": "string", "description": "Absolute directory in the product bundle." },
+        "adopt": {
+          "description": "Takes over an existing directory without a receipt when this file exists in it (and contains the text, if given). A directory whose files already equal the source is always adopted; another product's receipt never is.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file"],
+          "properties": {
+            "file": { "type": "string", "description": "Relative path with / separators, e.g. SKILL.md." },
+            "contains": { "type": "string", "minLength": 1, "maxLength": 256 }
+          }
+        }
       }
     }
   }

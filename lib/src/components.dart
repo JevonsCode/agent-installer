@@ -29,10 +29,11 @@ final class TextPart {
 
 /// A directory the product owns, such as a skill.
 final class DirectoryPart {
-  DirectoryPart(this.component, this.source, this.target);
+  DirectoryPart(this.component, this.source, this.target, [this.adopt]);
   final String component;
   final String source;
   final String target;
+  final AdoptMarker? adopt;
 }
 
 /// Everything one client needs for one product.
@@ -169,6 +170,7 @@ ClientWork buildWork(
           component,
           spec.source,
           '${path(dir)}${env.separator}${spec.name}',
+          spec.adopt,
         ),
       );
     }

@@ -65,9 +65,23 @@ final class HookSpec {
 
 /// A directory the product ships, e.g. a skill.
 final class DirectorySpec {
-  const DirectorySpec(this.name, this.source);
+  const DirectorySpec(this.name, this.source, {this.adopt});
   final String name;
   final String source;
+
+  /// Shows that a directory installed without a receipt (by hand or by an
+  /// older setup) is the product's, so it may be taken over.
+  final AdoptMarker? adopt;
+}
+
+/// A file inside an existing directory, optionally containing [contains],
+/// that marks the directory as the product's.
+final class AdoptMarker {
+  const AdoptMarker(this.file, this.contains);
+
+  /// A relative path with `/` separators, e.g. `SKILL.md`.
+  final String file;
+  final String? contains;
 }
 
 /// What a product installs into one client, after overrides and
@@ -382,7 +396,7 @@ final class ProductManifest {
 
     DirectorySpec directory(Object? raw, String at) {
       final Map<String, Object?> d = _object(raw, at);
-      _keys(d, const <String>{'name', 'source'}, at);
+      _keys(d, const <String>{'name', 'source', 'adopt'}, at);
       final String source = sub(d['source'], '$at.source');
       if (!RegExp(r'^(/|[A-Za-z]:[\\/])').hasMatch(source)) {
         invalidManifest('$at.source', 'must be an absolute directory.');
@@ -393,7 +407,22 @@ final class ProductManifest {
       if (!RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]*$').hasMatch(name)) {
         invalidManifest('$at.name', 'must be a plain directory name.');
       }
-      return DirectorySpec(name, source);
+      AdoptMarker? adopt;
+      if (d['adopt'] != null) {
+        final Map<String, Object?> a = _object(d['adopt'], '$at.adopt');
+        _keys(a, const <String>{'file', 'contains'}, '$at.adopt');
+        final String file = _text(a['file'], '$at.adopt.file', 255);
+        if (!file.split('/').every(_plainSegment)) {
+          invalidManifest('$at.adopt.file', 'must be a relative file path.');
+        }
+        adopt = AdoptMarker(
+          file,
+          a['contains'] == null
+              ? null
+              : _text(a['contains'], '$at.adopt.contains', 256),
+        );
+      }
+      return DirectorySpec(name, source, adopt: adopt);
     }
 
     final List<DirectorySpec> skills = json['skills'] == null
@@ -526,6 +555,11 @@ String _text(Object? value, String path, int maxLength) {
   }
   return value;
 }
+
+bool _plainSegment(String s) =>
+    s != '.' &&
+    s != '..' &&
+    RegExp(r'^[A-Za-z0-9._ +@()-]{1,255}$').hasMatch(s);
 
 String _option(Object? value, String path) {
   final String text = _text(value, path, 64);
