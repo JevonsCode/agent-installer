@@ -295,9 +295,13 @@ void _hookParts(
   InstallEnvironment env,
 ) {
   final bool cursor = file.format == 'cursor-hooks';
+  // Codex runs hook commands with PowerShell on Windows.
+  final bool powerShell = env.windows && file.format == 'codex-hooks';
   Map<String, Object?> handler(HookSpec h) => <String, Object?>{
     if (!cursor) 'type': 'command',
-    'command': shellCommand(h.command, windows: env.windows),
+    'command': powerShell
+        ? powerShellCommand(h.command)
+        : shellCommand(h.command, windows: env.windows),
     if (h.timeoutSec != null) 'timeout': h.timeoutSec,
     if (h.statusMessage != null && file.format == 'claude-hooks')
       'statusMessage': h.statusMessage,
@@ -552,6 +556,21 @@ String shellCommand(List<String> argv, {required bool windows}) => argv
     .join(' ');
 
 final RegExp _plain = RegExp(r'^[A-Za-z0-9_@%+=:,./-]+$');
+
+/// Joins a command for PowerShell: the program is invoked with `&`, and every
+/// argument that is not plain becomes a single-quoted literal, in which
+/// nothing is expanded.
+String powerShellCommand(List<String> argv) => <String>[
+  '&',
+  _powerShellQuote(argv.first),
+  for (final String a in argv.skip(1))
+    a != '--' && _powerShellPlain.hasMatch(a) ? a : _powerShellQuote(a),
+].join(' ');
+
+String _powerShellQuote(String value) => "'${value.replaceAll("'", "''")}'";
+
+// No @, %, +, = or comma: PowerShell gives them a meaning in arguments.
+final RegExp _powerShellPlain = RegExp(r'^[A-Za-z0-9_:./\\-]+$');
 
 Map<String, Object?> _root(String? text) {
   final Object? value = JsonEdit.decode(text);

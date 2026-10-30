@@ -211,7 +211,9 @@ void main() {
     expect(
       config,
       contains(
-        'command = "/opt/acme/bin/acme_mcp --notify-stop --source Codex"',
+        Platform.isWindows
+            ? "command = \"& '/opt/acme/bin/acme_mcp' --notify-stop --source Codex\""
+            : 'command = "/opt/acme/bin/acme_mcp --notify-stop --source Codex"',
       ),
     );
     expect(config, contains('matcher = "^(startup|resume)\$"'));
@@ -222,6 +224,47 @@ void main() {
     expect(status(i, 'codex').state, 'connected');
     i.remove(<String>['codex']);
     expect(read('.codex/config.toml'), toml);
+  });
+
+  test('Codex hook commands use PowerShell syntax on Windows only', () {
+    final AgentInstaller i = installer(
+      product: acme(
+        override: <String, Object?>{
+          'hooks': <String, Object?>{
+            'markers': <String>['acme_mcp'],
+            'events': <String, Object?>{
+              'stop': <String, Object?>{
+                'command': <String>['{acmeMcp}', "it's here", '--flag'],
+              },
+            },
+          },
+          'clients': <String, Object?>{},
+        },
+      ),
+    );
+    write('.codex/config.toml', '');
+    i.apply(<String>['codex', 'claude-code']);
+    String stop(String path, String event) {
+      final Map<String, Object?> hooks =
+          json(path)['hooks']! as Map<String, Object?>;
+      final Map<String, Object?> group =
+          (hooks[event]! as List).single as Map<String, Object?>;
+      return ((group['hooks']! as List).single as Map)['command'] as String;
+    }
+
+    expect(
+      stop('.codex/hooks.json', 'Stop'),
+      Platform.isWindows
+          ? "& '/opt/acme/bin/acme_mcp' 'it''s here' --flag"
+          : r"/opt/acme/bin/acme_mcp 'it'\''s here' --flag",
+    );
+    expect(
+      stop('.claude/settings.json', 'Stop'),
+      Platform.isWindows
+          ? '/opt/acme/bin/acme_mcp "it\'s here" --flag'
+          : r"/opt/acme/bin/acme_mcp 'it'\''s here' --flag",
+    );
+    expect(status(i, 'codex').state, 'connected');
   });
 
   test('an empty file the product never touched survives removal', () {

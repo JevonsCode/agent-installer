@@ -26,3 +26,9 @@
 - Code and the README no longer describe rules of particular host products.
   A short, neutral [Integrating a host](docs/integrating-a-host.md) guide
   covers the host flow with generic examples.
+- Codex on Windows runs lifecycle hooks in PowerShell, so its hook commands
+  are now written in PowerShell syntax there:
+  `& 'C:\path\node.exe' 'C:\path with spaces\hook.js' --flag`, with every
+  argument that is not plain written as a single-quoted literal (`''` for a
+  quote inside). Other clients and platforms are unchanged. An existing
+  Codex hook carrying the product's marker is rewritten on the next `apply`.

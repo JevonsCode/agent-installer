@@ -216,9 +216,13 @@ verified.
   Cursor's `afterAgentResponse`), and `preCompact`; the client maps them to
   its own names, and events a client doesn't support are skipped. The command
   is an array of arguments, quoted per platform and joined into one command
-  line. Each command must contain one of the strings in `markers`, which the
-  component uses to recognize, update, and remove this product's hook — so an
-  old entry installed manually or by an AI can also be taken over.
+  line: POSIX shell quoting on macOS and Linux, double quotes on Windows,
+  except Codex on Windows, which runs hooks in PowerShell and gets
+  `& 'C:\path\program.exe' 'an argument' --flag` (single-quoted literals,
+  `''` for a quote inside). Each command must contain one of the strings in
+  `markers`, which the component uses to recognize, update, and remove this
+  product's hook — so an old entry installed manually or by an AI can also be
+  taken over.
 - **Instructions**: the default marker is
   `<!-- BEGIN <PRODUCT> MANAGED INSTRUCTIONS -->`; `begin` and `end` can be
   set to reuse a product's existing markers.

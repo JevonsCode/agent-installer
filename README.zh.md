@@ -180,8 +180,11 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
 - **Hook**：事件名统一为 `sessionStart`、`userPromptSubmit`、`stop`、`agentResponse`
   （带最终回复文字，目前只有 Cursor 的 `afterAgentResponse`）、`preCompact`，
   由客户端映射到自己的名称；客户端不支持的事件会跳过。命令是参数数组，按平台引用
-  后写成一条命令。每条命令必须包含 `markers` 中的某段文字，组件靠它识别、更新和
-  卸载本产品的 Hook，所以手动或 AI 装过的旧条目也能被接管。
+  后写成一条命令：macOS、Linux 用 POSIX shell 引号，Windows 用双引号；Windows 上的
+  Codex 用 PowerShell 执行 Hook，写成 `& 'C:\path\program.exe' '参数' --flag`
+  （单引号字面量，内部的单引号写成 `''`）。每条命令必须包含 `markers` 中的某段
+  文字，组件靠它识别、更新和卸载本产品的 Hook，所以手动或 AI 装过的旧条目也能被
+  接管。
 - **说明**：默认标记为 `<!-- BEGIN <PRODUCT> MANAGED INSTRUCTIONS -->`，可用
   `begin`、`end` 沿用产品已有的标记。
 - **Skills / 插件**：整目录复制，目标目录内写回执 `.agent-installer.json`。不覆盖不属于
