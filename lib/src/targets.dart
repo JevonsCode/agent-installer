@@ -6,10 +6,12 @@ import 'errors.dart';
 
 /// The standard hook events a product may ask for. Each target maps them to
 /// its own event names and omits the ones it does not support.
+/// `agentResponse` fires with the final reply text, where a client has it.
 const List<String> hookEvents = <String>[
   'sessionStart',
   'userPromptSubmit',
   'stop',
+  'agentResponse',
   'preCompact',
 ];
 
@@ -97,6 +99,7 @@ builtinInstallTargets = <String, Map<String, Object?>>{
         'sessionStart': 'sessionStart',
         'userPromptSubmit': 'beforeSubmitPrompt',
         'stop': 'stop',
+        'agentResponse': 'afterAgentResponse',
       },
     },
     'skills': <String, Object?>{'dir': '~/.cursor/skills'},

@@ -304,6 +304,37 @@ void main() {
     expect(read('.cursor/mcp.json'), isNull);
   });
 
+  test('a client can take the final reply instead of stop', () {
+    final AgentInstaller i = installer(
+      product: acme(
+        override: <String, Object?>{
+          'clients': <String, Object?>{
+            'cursor': <String, Object?>{
+              'hooks': <String, Object?>{
+                'events': <String, Object?>{
+                  'stop': null,
+                  'agentResponse': <String, Object?>{
+                    'command': <String>['{acmeMcp}', '--notify-stop'],
+                  },
+                },
+              },
+            },
+          },
+        },
+      ),
+    );
+    i.apply(<String>['cursor', 'claude-code']);
+    final Map<String, Object?> hooks = json('.cursor/hooks.json');
+    expect((hooks['hooks']! as Map).keys, <String>[
+      'sessionStart',
+      'afterAgentResponse',
+    ]);
+    expect((json('.claude/settings.json')['hooks']! as Map).keys, <String>[
+      'SessionStart',
+      'Stop',
+    ]);
+  });
+
   test('OpenCode keeps comments, and conflicts become manual work', () {
     write(
       '.config/opencode/opencode.jsonc',

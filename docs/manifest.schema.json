@@ -65,7 +65,7 @@
         },
         "events": {
           "type": "object",
-          "propertyNames": { "enum": ["sessionStart", "userPromptSubmit", "stop", "preCompact"] },
+          "propertyNames": { "enum": ["sessionStart", "userPromptSubmit", "stop", "agentResponse", "preCompact"] },
           "additionalProperties": {
             "type": ["object", "null"],
             "additionalProperties": false,
