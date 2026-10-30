@@ -145,6 +145,31 @@ approval_mode = "approve"
       expect(CodexToml.removeServer(added, 'a b'), base);
     });
 
+    test('reads the args of a server, or null when they are not text', () {
+      const String toml = '''
+[mcp_servers.a]
+command = "x"
+args = [ # mine
+  "--p", 'C:\\literal',
+  "q\\"uote\\u00e9",
+]
+
+[mcp_servers.b]
+args = [1, 2]
+
+[mcp_servers.c]
+command = "y"
+''';
+      expect(CodexToml.serverArgs(toml, 'a'), <String>[
+        '--p',
+        r'C:\literal',
+        'q"uote\u00e9',
+      ]);
+      expect(CodexToml.serverArgs(toml, 'b'), isNull);
+      expect(CodexToml.serverArgs(toml, 'c'), isNull);
+      expect(CodexToml.serverArgs(toml, 'missing'), isNull);
+    });
+
     test('hooks are replaced where they were and foreign hooks stay', () {
       const String hooks = '''
 [[hooks.Stop]]

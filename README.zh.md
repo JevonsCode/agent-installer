@@ -2,17 +2,14 @@
 
 [English](README.md) | 简体中文
 
-Detects the AI agent clients on this machine and installs a product's
-integration (MCP server, hooks, instructions, skills, permissions) into the
-clients a person selects, with a dry-run preview, status and removal.
-
-扫描本机装了哪些 Agent 客户端，再把一个产品（DingDong、FULI……）的接入装进用户勾选
+扫描本机装了哪些 Agent 客户端，再把一个产品（宿主应用）的接入装进用户勾选
 的那几个：MCP 服务、生命周期 Hook、说明文件中的托管段落、Skills、插件目录和权限
 白名单。每一步都可以先预览，之后可以查看状态、更新和卸载。
 
 它与会话打开组件共用客户端 ID 和 [本机扩展](https://github.com/JevonsCode/agent-session-launcher/blob/main/docs/extensions.md) 目录。产品只描述“装
 什么”（[产品清单](#产品清单)），客户端“装在哪、什么格式”由内置目录和扩展文件描述
-（[安装目标](#安装目标)），写入由一组固定代码完成，清单和扩展文件都不能执行代码。
+（[安装目标](#安装目标)），写入由一组固定代码完成，清单和扩展文件都不能执行代码。[接入宿主](docs/integrating-a-host.md)
+（英文）介绍宿主应用的完整接入流程。
 
 ## 下载
 
@@ -54,6 +51,24 @@ dependencies:
 会话打开组件读其余字段并忽略 `install`。两边没有代码依赖，这个约定由各自的测试
 守住。
 
+## 共享目录
+
+两个组件共用一个按用户的根目录 `agent-clients`：
+
+| 平台 | 根目录 |
+| --- | --- |
+| Windows | `%APPDATA%\agent-clients` |
+| macOS / Linux | `XDG_CONFIG_HOME` 为绝对路径时是 `$XDG_CONFIG_HOME/agent-clients`，否则 `~/.config/agent-clients` |
+
+- `extensions/` 放手写的 `<client-id>.json`（`defaultExtensionsDirectory()`）。
+- `backups/<product>/<client-id>/` 放本组件修改文件或替换目录前复制的原件
+  （`defaultBackupsDirectory(product)`）。
+
+0.2 之前扩展放在同一基础目录下的 `agent-session-launcher/clients`，备份放在
+`agent-session-launcher/backups`。只要 `agent-clients/extensions` 还不存在，就继续
+读取旧的扩展目录；不会自动移动任何文件。迁移时新建 `agent-clients/extensions`，
+把 `.json` 文件移进去即可；旧备份不再需要时可以自行删除。
+
 ## 验证
 
 ```sh
@@ -76,8 +91,9 @@ agent-installer remove  --clients cursor --product … --var …
 
 - `plan` 只预览，返回每个文件的变更与 diff，不写任何东西。
 - `apply`、`remove` 必须明确列出客户端，不会默认全选。
-- `--extensions` 默认是共享的本机扩展目录；`--backups` 默认是它旁边的
-  `backups/<product>`，每个文件保留最近 5 份原件。
+- `--extensions` 默认是共享的本机扩展目录；`--backups` 默认是
+  `agent-clients/backups/<product>`（见[共享目录](#共享目录)），每个文件或目录
+  保留最近 5 份原件。
 - `--json` 输出 `{ "version": 1, "ok": true, … }`；失败时 `ok: false` 并带 `error.code`，
   退出码 1。完成但有组件被跳过时退出码 2，原因在每个客户端的 `problems` 里。
 
@@ -95,6 +111,14 @@ final plan = installer.plan(['claude-code']); // 预览
 installer.apply(['claude-code']);             // 用户确认后
 ```
 
+在 Node 中，`plan`、`apply`、`remove` 返回
+`{ clients, partial, problems, extensionErrors }`：`partial: true` 表示可执行文件以
+退出码 2 结束，`problems` 以 `{ client, message }` 列出每个被跳过的组件。所有失败
+都以带 `code` 的 `Error` 异步拒绝。`timeoutMs` 默认 60000（最大 600000）；超时后
+进程被结束，调用以 `unknown_outcome` 拒绝：文件可能改了也可能没改，所以绑定从不
+自动重试，宿主应先调用 `status` 再让用户决定是否重试。
+`defaultExtensionsDirectory()`、`defaultBackupsDirectory(product)` 返回共享路径。
+
 ## 状态
 
 每个客户端的 `state`：
@@ -111,6 +135,20 @@ installer.apply(['claude-code']);             // 用户确认后
 每个组件为 `current`、`outdated`、`missing`、`conflict` 或 `unsupported`（产品要装、
 客户端不支持）。`detected` 与 `evidence` 只说明找到了什么，不影响能否安装：用户可以
 给还没运行过的客户端预先安装。
+
+`plan`、`apply`、`remove` 之后，每个客户端还会列出 `actions`（用户还需要做的事，
+英文）和 `actionCodes`（与之一一对应、顺序相同的稳定代码），宿主可以据此显示自己的
+文案：
+
+| 代码 | 含义 |
+| --- | --- |
+| `restart_client` | 退出并重新打开客户端 |
+| `new_session` | 在客户端里开始新会话 |
+| `reload_config` | 重新加载客户端的配置或窗口 |
+| `trust_hooks` | 在客户端里检查并信任新的 Hook（Codex 用 `/hooks`） |
+| `other` | 只有英文文字描述 |
+
+完整输出见 [result.schema.json](docs/result.schema.json)。
 
 ## 内置客户端
 
@@ -161,15 +199,24 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
   同名条目只有在命令、参数或 URL 中含有 `markers` 里的某段文字时才算本产品的；
   否则报冲突，安装和卸载都不会动它。`markers` 默认沿用 Hook 的标记，没有 Hook 时用
   命令本身。条目里不写额外的标识字段，因为部分客户端重写配置时会丢掉不认识的字段。
+  `preserveArgs`（如 `["--tool-profile"]`）列出用户在本产品已有条目里自己选过值的
+  选项：更新时保留已有的 `--name value` 或 `--name=value`，替换清单里的值；清单里
+  没有该选项时追加到末尾。
 - **Hook**：事件名统一为 `sessionStart`、`userPromptSubmit`、`stop`、`agentResponse`
   （带最终回复文字，目前只有 Cursor 的 `afterAgentResponse`）、`preCompact`，
   由客户端映射到自己的名称；客户端不支持的事件会跳过。命令是参数数组，按平台引用
-  后写成一条命令。每条命令必须包含 `markers` 中的某段文字，组件靠它识别、更新和
-  卸载本产品的 Hook，所以手动或 AI 装过的旧条目也能被接管。
+  后写成一条命令：macOS、Linux 用 POSIX shell 引号，Windows 用双引号；Windows 上的
+  Codex 用 PowerShell 执行 Hook，写成 `& 'C:\path\program.exe' '参数' --flag`
+  （单引号字面量，内部的单引号写成 `''`）。每条命令必须包含 `markers` 中的某段
+  文字，组件靠它识别、更新和卸载本产品的 Hook，所以手动或 AI 装过的旧条目也能被
+  接管。
 - **说明**：默认标记为 `<!-- BEGIN <PRODUCT> MANAGED INSTRUCTIONS -->`，可用
   `begin`、`end` 沿用产品已有的标记。
 - **Skills / 插件**：整目录复制，目标目录内写回执 `.agent-installer.json`。不覆盖不属于
-  本产品的同名目录；用户改过的目录会被保留并报告。
+  本产品的同名目录；用户改过的目录会被保留并报告。没有回执、但文件与产品完全一致的
+  目录会被接管（只写回执，变更类型为 `adopt`）；清单写了
+  `"adopt": { "file": "SKILL.md", "contains": "name: acme-helper" }` 时，带这个标记的
+  目录也会被接管并替换。带其他产品回执的目录永远不会被接管。
 - **按客户端覆盖**：`clients.<id>` 与上面的组件递归合并，`null` 表示这个客户端不装该
   组件。
 
@@ -202,6 +249,9 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
 - 写入格式只能从内置格式中选：MCP 为 `claude-json`、`mcp-servers-json`、`kiro-json`、
   `opencode-json`、`codex-toml`，Hook 为 `claude-hooks`、`codex-hooks`、`cursor-hooks`。
 - 文件名用内置 ID（如 `cursor.json`）时，`install` 中列出的键替换内置值，其余保留。
+- `afterInstall` 列出变更后用户还要做的事：写成
+  `{ "code": "restart_client", "message": "Restart Acme Agent." }`（代码取自上表），
+  或纯文字（代码为 `other`）。
 - 只有 `install` 的文件不会成为会话打开组件的客户端。出错的扩展文件只跳过它自己，
   原因在 `extensionErrors` 中。
 
@@ -214,6 +264,12 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
   保持为链接，写入它指向的文件。
 - 客户端在读写之间改了文件（Claude Code 会频繁改 `~/.claude.json`），组件会基于新
   内容重新编辑，最多重试 3 次，不覆盖客户端的修改。
+- 设置了备份目录时，每个被修改文件的原件，以及每个被替换或卸载的 Skill、插件目录，
+  都会复制到 `<backups>/<client-id>/<名称>.<UTC 时间>.bak`（仅当前用户可读）；每个
+  名称保留最近 5 份。
+- Skill、插件目录通过把准备好的副本改名到位来替换。客户端占用该目录、Windows 拒绝
+  改名时，改为原地更新其中的文件，并在该变更的 `note` 中说明；其他失败会保持目录
+  原样，并写入 `problems`。
 - 卸载后文件只剩 `{}` 时删除该文件；卸载创建过的说明文件同理。
 - 从不修改客户端的信任存储。Codex 新增或改动 Hook 后，需要用户在 Codex 中用
   `/hooks` 确认信任。

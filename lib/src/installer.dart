@@ -84,19 +84,31 @@ final class ClientStatus {
 
 /// One file or directory a plan would change.
 final class PlannedChange {
-  const PlannedChange(this.path, this.components, this.action, [this.diff]);
+  const PlannedChange(
+    this.path,
+    this.components,
+    this.action, [
+    this.diff,
+    this.note,
+  ]);
   final String path;
   final List<String> components;
 
-  /// `create`, `update` or `delete`.
+  /// `create`, `update`, `delete`, or `adopt` when an existing directory
+  /// that already holds the product's files only gets its receipt.
   final String action;
   final String? diff;
+
+  /// How the change was made when that differs from the usual way, e.g. a
+  /// directory in use whose files were updated in place.
+  final String? note;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'path': path,
     'components': components,
     'action': action,
     'diff': ?diff,
+    'note': ?note,
   };
 }
 
@@ -108,8 +120,9 @@ final class ClientResult {
     this.state,
     this.changes,
     this.problems,
-    this.actions,
-  );
+    this.actions, [
+    this.actionCodes = const <String>[],
+  ]);
   final String id;
   final String name;
 
@@ -118,8 +131,12 @@ final class ClientResult {
   final List<PlannedChange> changes;
   final List<String> problems;
 
-  /// What the person still has to do, e.g. restart the client.
+  /// What the person still has to do, e.g. restart the client, in English.
   final List<String> actions;
+
+  /// A stable code for each of [actions], in the same order, so a host can
+  /// show its own wording; the codes are listed in `actionCodes`.
+  final List<String> actionCodes;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'id': id,
@@ -128,6 +145,7 @@ final class ClientResult {
     'changes': <Object?>[for (final c in changes) c.toJson()],
     'problems': problems,
     'actions': actions,
+    'actionCodes': actionCodes,
   };
 }
 
@@ -309,6 +327,7 @@ final class AgentInstaller {
     }
     for (final DirectoryPart d in work.directories) {
       final PlannedChange? change = _editDirectory(
+        target.id,
         d,
         resolved,
         install: install,
@@ -320,12 +339,16 @@ final class AgentInstaller {
     final bool hooksChanged = changes.any(
       (c) => c.components.contains('hooks'),
     );
-    final List<String> actions = changes.isEmpty || !install
-        ? const <String>[]
-        : <String>[
+    final List<AfterInstallAction> steps = changes.isEmpty || !install
+        ? const <AfterInstallAction>[]
+        : <AfterInstallAction>[
             ...target.afterInstall,
             if (hooksChanged && target.hooks?.format == 'codex-hooks')
-              'Review and trust the new hooks in Codex with /hooks.',
+              (
+                code: 'trust_hooks',
+                message:
+                    'Review and trust the new hooks in ${target.name} with /hooks.',
+              ),
           ];
     return ClientResult(
       target.id,
@@ -333,7 +356,8 @@ final class AgentInstaller {
       _status(target).state,
       changes,
       problems,
-      actions,
+      <String>[for (final AfterInstallAction s in steps) s.message],
+      <String>[for (final AfterInstallAction s in steps) s.code],
     );
   }
 
@@ -389,6 +413,7 @@ final class AgentInstaller {
   }
 
   PlannedChange? _editDirectory(
+    String clientId,
     DirectoryPart part,
     ResolvedProduct resolved, {
     required bool install,
@@ -403,15 +428,49 @@ final class AgentInstaller {
       return null;
     }
     if (install) {
-      if (state.state == 'current') return null;
-      final PlannedChange change = PlannedChange(shown, <String>[
-        part.component,
-      ], state.state == 'missing' ? 'create' : 'update');
-      if (write) _copyDirectory(part, state.source!, resolved);
-      return change;
+      if (state.state == 'current') {
+        if (!state.adopt) return null;
+        // Already the product's files: only the receipt is added.
+        if (write) _writeReceipt(part.target, state.source!, resolved);
+        return PlannedChange(shown, <String>[part.component], 'adopt');
+      }
+      final String action = state.state == 'missing' ? 'create' : 'update';
+      if (!write) return PlannedChange(shown, <String>[part.component], action);
+      try {
+        _backupDirectory(clientId, part.target);
+        final bool inPlace = _copyDirectory(part, state.source!, resolved);
+        return PlannedChange(
+          shown,
+          <String>[part.component],
+          action,
+          null,
+          inPlace
+              ? 'The directory was in use, so its files were updated in place.'
+              : null,
+        );
+      } on FileSystemException catch (error) {
+        problems.add(
+          '${part.component}: $shown: it could not be replaced '
+          '(${error.osError?.message ?? error.message}); close the client '
+          'and try again.',
+        );
+        return null;
+      }
     }
     if (state.state == 'missing') return null;
-    if (write) Directory(part.target).deleteSync(recursive: true);
+    if (write) {
+      try {
+        _backupDirectory(clientId, part.target);
+        Directory(part.target).deleteSync(recursive: true);
+      } on FileSystemException catch (error) {
+        problems.add(
+          '${part.component}: $shown: it could not be removed '
+          '(${error.osError?.message ?? error.message}); close the client '
+          'and try again.',
+        );
+        return null;
+      }
+    }
     return PlannedChange(shown, <String>[part.component], 'delete');
   }
 
@@ -429,20 +488,50 @@ final class AgentInstaller {
     if (!target.existsSync()) return _DirState('missing', null, source: source);
     final File receiptFile = File('${part.target}${env.separator}$_receipt');
     Map<String, Object?>? receipt;
+    bool foreign = false;
     try {
       final Object? json = jsonDecode(receiptFile.readAsStringSync());
-      if (json is Map<String, Object?> && json['product'] == resolved.product)
+      if (json is Map<String, Object?> && json['product'] == resolved.product) {
         receipt = json;
+      } else {
+        foreign = json is Map<String, Object?> && json['product'] is String;
+      }
     } on Object {
       receipt = null;
     }
+    final Map<String, String> actual;
+    try {
+      actual = _hashTree(part.target)..remove(_receipt);
+    } on Object {
+      return _DirState('conflict', 'It cannot be read.');
+    }
     if (receipt == null || receipt['files'] is! Map) {
+      // A directory without the product's receipt is taken over only when it
+      // already holds exactly the product's files, or carries the marker the
+      // manifest names; another product's receipt is never taken over.
+      if (!foreign && deepEquals(actual, source)) {
+        return _DirState(
+          'current',
+          null,
+          source: source,
+          ours: true,
+          adopt: true,
+        );
+      }
+      if (!foreign && _hasAdoptMarker(part)) {
+        return _DirState(
+          'outdated',
+          null,
+          source: source,
+          ours: true,
+          adopt: true,
+        );
+      }
       return _DirState(
         'conflict',
         'It exists and is not managed by ${product.name}.',
       );
     }
-    final Map<String, String> actual = _hashTree(part.target)..remove(_receipt);
     if (!deepEquals(actual, receipt['files'])) {
       return _DirState(
         'conflict',
@@ -458,7 +547,10 @@ final class AgentInstaller {
     );
   }
 
-  void _copyDirectory(
+  /// Replaces the directory with a staged copy, renaming it out of the way.
+  /// When the client holds the directory open (Windows refuses to rename it)
+  /// the files are updated in place instead, and true is returned.
+  bool _copyDirectory(
     DirectoryPart part,
     Map<String, String> files,
     ResolvedProduct resolved,
@@ -485,12 +577,83 @@ final class AgentInstaller {
         '${part.source}${env.separator}${_native(relative)}',
       ).copySync(to.path);
     }
-    File('${staging.path}${env.separator}$_receipt').writeAsStringSync(
-      '${const JsonEncoder.withIndent('  ').convert(<String, Object?>{'product': resolved.product, 'version': resolved.version, 'files': files})}\n',
-    );
-    if (target.existsSync()) target.renameSync(old.path);
-    staging.renameSync(target.path);
+    _writeReceipt(staging.path, files, resolved);
+    if (target.existsSync()) {
+      try {
+        renameDirectory(target.path, old.path);
+      } on FileSystemException catch (error) {
+        if (!_inUse(error)) rethrow;
+        _updateInPlace(staging, target);
+        staging.deleteSync(recursive: true);
+        return true;
+      }
+    }
+    try {
+      renameDirectory(staging.path, target.path);
+    } on Object {
+      // Put the previous version back rather than leave nothing behind.
+      if (old.existsSync() && !target.existsSync()) {
+        renameDirectory(old.path, target.path);
+      }
+      rethrow;
+    }
     if (old.existsSync()) old.deleteSync(recursive: true);
+    return false;
+  }
+
+  /// Copies every staged file over [target], the receipt last, and deletes
+  /// the files the new version no longer has.
+  void _updateInPlace(Directory staging, Directory target) {
+    final String receipt = '${env.separator}$_receipt';
+    final Set<String> staged = <String>{
+      for (final FileSystemEntity e in staging.listSync(recursive: true))
+        if (e is File) e.path.substring(staging.path.length),
+    };
+    for (final String relative in <String>[
+      ...staged.where((r) => r != receipt),
+      receipt,
+    ]) {
+      final File to = File('${target.path}$relative');
+      to.parent.createSync(recursive: true);
+      File('${staging.path}$relative').copySync(to.path);
+    }
+    for (final FileSystemEntity e in target.listSync(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (e is File && !staged.contains(e.path.substring(target.path.length))) {
+        e.deleteSync();
+      }
+    }
+  }
+
+  /// A sharing, lock or access violation on Windows, or EBUSY elsewhere.
+  bool _inUse(FileSystemException error) {
+    final int? code = error.osError?.errorCode;
+    return env.windows ? const <int>{5, 32, 33}.contains(code) : code == 16;
+  }
+
+  void _writeReceipt(
+    String directory,
+    Map<String, String> files,
+    ResolvedProduct resolved,
+  ) => File('$directory${env.separator}$_receipt').writeAsStringSync(
+    '${const JsonEncoder.withIndent('  ').convert(<String, Object?>{'product': resolved.product, 'version': resolved.version, 'files': files})}\n',
+  );
+
+  bool _hasAdoptMarker(DirectoryPart part) {
+    final AdoptMarker? marker = part.adopt;
+    if (marker == null) return false;
+    final File file = File(
+      '${part.target}${env.separator}${_native(marker.file)}',
+    );
+    try {
+      if (!file.existsSync()) return false;
+      return marker.contains == null ||
+          file.readAsStringSync().contains(marker.contains!);
+    } on Object {
+      return false;
+    }
   }
 
   Map<String, String> _hashTree(String root) {
@@ -551,34 +714,85 @@ final class AgentInstaller {
   }
 
   void _backup(String clientId, String path, String? before) {
-    final String? root = backupDirectory;
-    if (root == null || before == null) return;
-    final Directory dir = Directory('$root${env.separator}$clientId');
-    dir.createSync(recursive: true);
+    final Directory? dir = _backupFolder(clientId);
+    if (dir == null || before == null) return;
     final String name = File(path).uri.pathSegments.last;
-    final String stamp = DateTime.now()
-        .toUtc()
-        .toIso8601String()
-        .replaceAll(RegExp(r'[-:]'), '')
-        .replaceAll('.', '');
-    final File backup = File('${dir.path}${env.separator}$name.$stamp.bak');
+    final File backup = File(
+      '${dir.path}${env.separator}$name.${_stamp()}.bak',
+    );
     // Configs can hold tokens: create the copy private before writing to it.
     backup.createSync();
     _restrict(backup.path, 0x180);
-    _restrict(dir.path, 0x1c0);
     backup.writeAsStringSync(before);
-    final List<File> old =
+    _prune(dir, name);
+  }
+
+  /// Copies a directory the product is about to replace or delete, kept like
+  /// file backups: the 5 most recent per name.
+  void _backupDirectory(String clientId, String path) {
+    final Directory source = Directory(path);
+    final Directory? dir = _backupFolder(clientId);
+    if (dir == null || !source.existsSync()) return;
+    final String name = source.uri.pathSegments.where((s) => s.isNotEmpty).last;
+    final Directory backup = Directory(
+      '${dir.path}${env.separator}$name.${_stamp()}.bak',
+    )..createSync();
+    _restrict(backup.path, 0x1c0);
+    for (final FileSystemEntity entry in source.listSync(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entry is! File) continue;
+      final File to = File(
+        '${backup.path}${entry.path.substring(source.path.length)}',
+      );
+      to.parent.createSync(recursive: true);
+      entry.copySync(to.path);
+    }
+    _prune(dir, name);
+  }
+
+  /// The private per-client backup folder, or null when backups are off.
+  Directory? _backupFolder(String clientId) {
+    final String? root = backupDirectory;
+    if (root == null) return null;
+    final Directory dir = Directory('$root${env.separator}$clientId')
+      ..createSync(recursive: true);
+    _restrict(dir.path, 0x1c0);
+    return dir;
+  }
+
+  String _stamp() => DateTime.now()
+      .toUtc()
+      .toIso8601String()
+      .replaceAll(RegExp(r'[-:]'), '')
+      .replaceAll('.', '');
+
+  /// Keeps the 5 most recent backups of [name] in [dir].
+  void _prune(Directory dir, String name) {
+    final RegExp ours = RegExp(
+      '^${RegExp.escape(name)}'
+      r'\.\d{8}T\d+Z\.bak$',
+    );
+    final List<FileSystemEntity> old =
         dir
             .listSync()
-            .whereType<File>()
-            .where((f) => f.uri.pathSegments.last.startsWith('$name.'))
+            .where(
+              (e) => ours.hasMatch(
+                e.uri.pathSegments.lastWhere((s) => s.isNotEmpty),
+              ),
+            )
             .toList()
           ..sort((a, b) => b.path.compareTo(a.path));
-    for (final File f in old.skip(5)) {
-      f.deleteSync();
+    for (final FileSystemEntity e in old.skip(5)) {
+      e.deleteSync(recursive: true);
     }
   }
 }
+
+/// Renames a directory; tests replace it to simulate a directory in use.
+void Function(String from, String to) renameDirectory = (from, to) =>
+    Directory(from).renameSync(to);
 
 void _restrict(String path, int mode) {
   if (Platform.isWindows) return;
@@ -635,11 +849,20 @@ TargetScan scanTarget(InstallTarget target, InstallEnvironment env) {
 }
 
 final class _DirState {
-  _DirState(this.state, this.message, {this.source, this.ours = false});
+  _DirState(
+    this.state,
+    this.message, {
+    this.source,
+    this.ours = false,
+    this.adopt = false,
+  });
   final String state;
   final String? message;
   final Map<String, String>? source;
   final bool ours;
+
+  /// The directory has no receipt yet and is taken over on install.
+  final bool adopt;
 }
 
 const String _receipt = '.agent-installer.json';

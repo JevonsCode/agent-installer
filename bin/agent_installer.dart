@@ -14,8 +14,9 @@ Usage:
 PRODUCT: --product FILE [--var NAME=VALUE]... [--extensions DIR]
          [--backups DIR] [--json]
 
-Extensions default to the shared per-user directory; backups default to a
-"backups" directory beside it. plan never writes anything.''';
+Extensions default to the shared per-user directory
+(agent-clients/extensions); backups default to agent-clients/backups/PRODUCT.
+plan never writes anything.''';
 
 Future<void> main(List<String> arguments) async {
   final bool json = arguments.contains('--json');
@@ -117,11 +118,7 @@ int _run(List<String> arguments, bool json) {
     variables: vars,
   );
   final String? backups =
-      options['--backups'] ??
-      (extensions == null
-          ? null
-          : '${File(extensions).parent.path}${Platform.pathSeparator}backups'
-                '${Platform.pathSeparator}${product.product}');
+      options['--backups'] ?? defaultBackupsDirectory(product.product);
   final AgentInstaller installer = AgentInstaller(
     product: product,
     targets: targets,
@@ -170,6 +167,7 @@ int _run(List<String> arguments, bool json) {
       if (r.changes.isEmpty) stdout.writeln('  no changes');
       for (final PlannedChange c in r.changes) {
         stdout.writeln('  ${c.action} ${c.path} [${c.components.join(', ')}]');
+        if (c.note != null) stdout.writeln('      ${c.note}');
         if (command == 'plan' && c.diff != null) {
           for (final String line in c.diff!.split('\n')) {
             stdout.writeln('      $line');

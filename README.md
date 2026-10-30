@@ -6,8 +6,8 @@ Detects the AI agent clients on this machine and installs a product's
 integration (MCP server, hooks, instructions, skills, permissions) into the
 clients a person selects, with a dry-run preview, status and removal.
 
-Products such as DingDong and FULI describe what to install; the installer
-writes it into MCP configs, lifecycle hooks, managed sections in instruction
+A product (the host) describes what to install; the installer writes it
+into MCP configs, lifecycle hooks, managed sections in instruction
 files, skill and plugin directories, and permission allowlists. Every step can
 be previewed first, and afterward you can check status, update, or uninstall.
 
@@ -17,7 +17,8 @@ directory with the session launcher component. A product only describes
 it and in what format" for each client is described by the built-in catalog
 and extension files ([Install targets](#install-targets)); the actual writing
 is done by a fixed set of code — neither the manifest nor the extension files
-can execute code.
+can execute code. [Integrating a host](docs/integrating-a-host.md) walks a
+host application through the whole flow.
 
 ## Download
 
@@ -64,6 +65,28 @@ in the same `<client-id>.json`, this component only reads `install`, while
 the session launcher component reads the other fields and ignores `install`.
 The two have no code dependency; each side's tests guard this convention.
 
+## Shared directory
+
+Both components use one per-user root, `agent-clients`:
+
+| Platform | Root |
+| --- | --- |
+| Windows | `%APPDATA%\agent-clients` |
+| macOS / Linux | `$XDG_CONFIG_HOME/agent-clients` when `XDG_CONFIG_HOME` is absolute, else `~/.config/agent-clients` |
+
+- `extensions/` holds the hand-written `<client-id>.json` files
+  (`defaultExtensionsDirectory()`).
+- `backups/<product>/<client-id>/` holds the originals this component copied
+  before changing a file or replacing a directory
+  (`defaultBackupsDirectory(product)`).
+
+Before 0.2 the extensions lived in `agent-session-launcher/clients` and the
+backups in `agent-session-launcher/backups` under the same base. While
+`agent-clients/extensions` does not exist, the old extensions directory is
+still read; nothing is moved automatically. To move, create
+`agent-clients/extensions` and move your `.json` files into it; old backups
+can be deleted once you no longer need them.
+
 ## Verification
 
 ```sh
@@ -90,8 +113,9 @@ agent-installer remove  --clients cursor --product … --var …
 - `apply` and `remove` must list clients explicitly; they never default to
   all clients.
 - `--extensions` defaults to the shared local extensions directory;
-  `--backups` defaults to the `backups/<product>` folder next to it, keeping
-  the 5 most recent originals per file.
+  `--backups` defaults to `agent-clients/backups/<product>` (see
+  [Shared directory](#shared-directory)), keeping the 5 most recent originals
+  per file or directory.
 - `--json` prints `{ "version": 1, "ok": true, … }`; on failure, `ok: false`
   with `error.code` and exit code 1. When it finishes but some components
   were skipped, the exit code is 2, with the reasons under each client's
@@ -111,6 +135,17 @@ final plan = installer.plan(['claude-code']); // preview
 installer.apply(['claude-code']);             // after user confirmation
 ```
 
+In Node, `plan`, `apply` and `remove` resolve with
+`{ clients, partial, problems, extensionErrors }`: `partial: true` means the
+executable finished with exit code 2 and `problems` lists
+`{ client, message }` for every component left alone. Every failure rejects
+asynchronously with an `Error` carrying `code`. `timeoutMs` defaults to
+60000 (at most 600000); when it runs out the process is killed and the call
+rejects with `unknown_outcome`: files may or may not have changed, so the
+binding never retries, and a host should call `status` before offering to
+try again. `defaultExtensionsDirectory()` and
+`defaultBackupsDirectory(product)` return the shared paths.
+
 ## Status
 
 Each client's `state`:
@@ -129,6 +164,20 @@ Each component is `current`, `outdated`, `missing`, `conflict`, or
 support it). `detected` and `evidence` only state what was found; they don't
 affect whether installation is possible: a user can pre-install for a client
 that has never been run.
+
+After `plan`, `apply` or `remove`, each client also lists `actions`, what
+the person still has to do in English, and `actionCodes`, one stable code
+per action in the same order, so a host can show its own wording:
+
+| Code | Meaning |
+| --- | --- |
+| `restart_client` | Quit and reopen the client |
+| `new_session` | Start a new session in the client |
+| `reload_config` | Reload the client's configuration or window |
+| `trust_hooks` | Review and trust the new hooks in the client (Codex: `/hooks`) |
+| `other` | Only the English text describes it |
+
+The full output is described in [result.schema.json](docs/result.schema.json).
 
 ## Built-in clients
 
@@ -187,14 +236,22 @@ verified.
   `markers` defaults to the hook's markers, or to the command itself if there
   is no hook. No extra identifying field is written into the entry, because
   some clients drop unrecognized fields when they rewrite the config.
+  `preserveArgs` (e.g. `["--tool-profile"]`) names options whose value the
+  person chose in the product's existing entry: on update that `--name value`
+  or `--name=value` replaces the manifest's value, or is appended when the
+  manifest has none.
 - **Hook**: event names are unified as `sessionStart`, `userPromptSubmit`,
   `stop`, `agentResponse` (carries the final reply text; currently only
   Cursor's `afterAgentResponse`), and `preCompact`; the client maps them to
   its own names, and events a client doesn't support are skipped. The command
   is an array of arguments, quoted per platform and joined into one command
-  line. Each command must contain one of the strings in `markers`, which the
-  component uses to recognize, update, and remove this product's hook — so an
-  old entry installed manually or by an AI can also be taken over.
+  line: POSIX shell quoting on macOS and Linux, double quotes on Windows,
+  except Codex on Windows, which runs hooks in PowerShell and gets
+  `& 'C:\path\program.exe' 'an argument' --flag` (single-quoted literals,
+  `''` for a quote inside). Each command must contain one of the strings in
+  `markers`, which the component uses to recognize, update, and remove this
+  product's hook — so an old entry installed manually or by an AI can also be
+  taken over.
 - **Instructions**: the default marker is
   `<!-- BEGIN <PRODUCT> MANAGED INSTRUCTIONS -->`; `begin` and `end` can be
   set to reuse a product's existing markers.
@@ -202,6 +259,11 @@ verified.
   `.agent-installer.json` is written into the target directory. A
   same-named directory that doesn't belong to this product is never
   overwritten; a directory the user has modified is kept as-is and reported.
+  A directory without a receipt is adopted (only the receipt is written; the
+  change's action is `adopt`) when its files already equal the product's.
+  With `"adopt": { "file": "SKILL.md", "contains": "name: acme-helper" }` a
+  directory holding that marker is taken over and replaced as well. A
+  directory with another product's receipt is never adopted.
 - **Per-client overrides**: `clients.<id>` is merged recursively with the
   components above; `null` means this client does not get that component.
 
@@ -238,6 +300,9 @@ to its extension file; see the fields in
   `codex-toml`; for hooks, `claude-hooks`, `codex-hooks`, `cursor-hooks`.
 - When the file name uses a built-in ID (e.g. `cursor.json`), the keys listed
   under `install` replace the built-in values; the rest are kept.
+- `afterInstall` lists the steps left to the person after a change, as
+  `{ "code": "restart_client", "message": "Restart Acme Agent." }` with one of
+  the codes above, or as plain text (code `other`).
 - A file whose only field is `install` never becomes a client of the session
   launcher component. An extension file with an error only skips itself; the
   reason is in `extensionErrors`.
@@ -258,6 +323,15 @@ to its extension file; see the fields in
   frequently rewrites `~/.claude.json`), the component re-applies its edit
   against the new content, retrying up to 3 times, and never overwrites the
   client's own change.
+- With a backup directory, the original of every changed file, and every
+  skill or plugin directory before it is replaced or removed, is copied to
+  `<backups>/<client-id>/<name>.<UTC time>.bak` (private to the user); the
+  5 most recent copies per name are kept.
+- A skill or plugin directory is replaced by renaming a staged copy into
+  place. When the client holds the directory open and Windows refuses the
+  rename, its files are updated in place instead and the change carries a
+  `note` saying so; any other failure leaves the directory as it was and is
+  reported under `problems`.
 - After removal, a file that is left with only `{}` is deleted; the same
   applies to an instructions file that removal created.
 - The client's trust store is never modified. After Codex gets a new or

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:agent_installer/agent_installer.dart';
+import 'package:agent_installer/src/installer.dart' show renameDirectory;
 import 'package:test/test.dart';
 
 late Directory home;
@@ -111,6 +112,8 @@ void main() {
     expect(applied.state, 'connected');
     expect(applied.problems, isEmpty);
     expect(applied.actions, contains(startsWith('Start a new Claude Code')));
+    expect(applied.actionCodes, <String>['new_session']);
+    expect(applied.toJson()['actionCodes'], <String>['new_session']);
     expect(json('.claude.json')['mcpServers'], <String, Object?>{
       'other': <String, Object?>{'command': 'x'},
       'acme': <String, Object?>{
@@ -201,6 +204,8 @@ void main() {
     final ClientResult applied = i.apply(<String>['codex']).single;
     expect(applied.problems, isEmpty);
     expect(applied.actions, contains(contains('/hooks')));
+    expect(applied.actionCodes, <String>['new_session', 'trust_hooks']);
+    expect(applied.actionCodes, hasLength(applied.actions.length));
     final String config = read('.codex/config.toml')!;
     expect(
       config,
@@ -211,7 +216,9 @@ void main() {
     expect(
       config,
       contains(
-        'command = "/opt/acme/bin/acme_mcp --notify-stop --source Codex"',
+        Platform.isWindows
+            ? "command = \"& '/opt/acme/bin/acme_mcp' --notify-stop --source Codex\""
+            : 'command = "/opt/acme/bin/acme_mcp --notify-stop --source Codex"',
       ),
     );
     expect(config, contains('matcher = "^(startup|resume)\$"'));
@@ -222,6 +229,47 @@ void main() {
     expect(status(i, 'codex').state, 'connected');
     i.remove(<String>['codex']);
     expect(read('.codex/config.toml'), toml);
+  });
+
+  test('Codex hook commands use PowerShell syntax on Windows only', () {
+    final AgentInstaller i = installer(
+      product: acme(
+        override: <String, Object?>{
+          'hooks': <String, Object?>{
+            'markers': <String>['acme_mcp'],
+            'events': <String, Object?>{
+              'stop': <String, Object?>{
+                'command': <String>['{acmeMcp}', "it's here", '--flag'],
+              },
+            },
+          },
+          'clients': <String, Object?>{},
+        },
+      ),
+    );
+    write('.codex/config.toml', '');
+    i.apply(<String>['codex', 'claude-code']);
+    String stop(String path, String event) {
+      final Map<String, Object?> hooks =
+          json(path)['hooks']! as Map<String, Object?>;
+      final Map<String, Object?> group =
+          (hooks[event]! as List).single as Map<String, Object?>;
+      return ((group['hooks']! as List).single as Map)['command'] as String;
+    }
+
+    expect(
+      stop('.codex/hooks.json', 'Stop'),
+      Platform.isWindows
+          ? "& '/opt/acme/bin/acme_mcp' 'it''s here' --flag"
+          : r"/opt/acme/bin/acme_mcp 'it'\''s here' --flag",
+    );
+    expect(
+      stop('.claude/settings.json', 'Stop'),
+      Platform.isWindows
+          ? '/opt/acme/bin/acme_mcp "it\'s here" --flag'
+          : r"/opt/acme/bin/acme_mcp 'it'\''s here' --flag",
+    );
+    expect(status(i, 'codex').state, 'connected');
   });
 
   test('an empty file the product never touched survives removal', () {
@@ -441,6 +489,79 @@ void main() {
     );
   });
 
+  test('preserved options keep the value the person chose', () {
+    final ProductManifest product = acme(
+      override: <String, Object?>{
+        'mcp': <String, Object?>{
+          'name': 'acme',
+          'command': '{acmeMcp}',
+          'args': <String>[
+            '--source',
+            '{clientName}',
+            '--tool-profile',
+            'basic',
+          ],
+          'preserveArgs': <String>['--tool-profile'],
+        },
+      },
+    );
+    write(
+      '.codex/config.toml',
+      '[mcp_servers.acme]\ncommand = "/usr/local/bin/acme_mcp"\n'
+          'args = [\n  "--tool-profile", # chosen by hand\n  "full",\n]\n',
+    );
+    write(
+      '.cursor/mcp.json',
+      '{"mcpServers":{"acme":{"command":"acme_mcp","args":["--tool-profile=lite"]}}}',
+    );
+    write(
+      '.config/opencode/opencode.json',
+      '{"mcp":{"acme":{"type":"local","command":["acme_mcp","--tool-profile","x"]}}}',
+    );
+    final AgentInstaller i = installer(product: product);
+    i.apply(<String>['codex', 'cursor', 'opencode', 'claude-code']);
+    expect(
+      read('.codex/config.toml'),
+      contains('args = ["--source", "Codex", "--tool-profile", "full"]'),
+    );
+    expect(
+      ((json('.cursor/mcp.json')['mcpServers']! as Map)['acme']!
+          as Map)['args'],
+      <String>['--source', 'Cursor', '--tool-profile=lite'],
+    );
+    expect(
+      ((json('.config/opencode/opencode.json')['mcp']! as Map)['acme']!
+          as Map)['command'],
+      <String>[
+        '/opt/acme/bin/acme_mcp',
+        '--source',
+        'OpenCode',
+        '--tool-profile',
+        'x',
+      ],
+    );
+    expect(
+      ((json('.claude.json')['mcpServers']! as Map)['acme']! as Map)['args'],
+      <String>['--source', 'Claude Code', '--tool-profile', 'basic'],
+      reason: 'a new entry gets the manifest default',
+    );
+    for (final String id in <String>['codex', 'cursor', 'opencode']) {
+      expect(states(status(i, id))['mcp'], 'current', reason: id);
+    }
+    expect(
+      () => acme(
+        override: <String, Object?>{
+          'mcp': <String, Object?>{
+            'name': 'acme',
+            'command': '{acmeMcp}',
+            'preserveArgs': <String>['tool profile'],
+          },
+        },
+      ),
+      throwsA(isA<AgentInstallException>()),
+    );
+  });
+
   test('the MCP command must carry a marker', () {
     expect(
       () => acme(
@@ -472,6 +593,177 @@ void main() {
     final ClientResult removed = i.remove(<String>['claude-code']).single;
     expect(removed.problems, contains(contains('changed by hand')));
     expect(read('.claude/skills/acme-helper/SKILL.md'), 'edited by hand');
+  });
+
+  test('a skill already holding the product files is adopted', () {
+    final String skill = '${home.path}/.cursor/skills/acme-helper';
+    Directory(skill).createSync(recursive: true);
+    File('$bundle/skills/acme-helper/SKILL.md').copySync('$skill/SKILL.md');
+    final AgentInstaller i = installer();
+    expect(states(status(i, 'cursor'))['skills'], 'current');
+    final PlannedChange planned = i
+        .plan(<String>['cursor'])
+        .single
+        .changes
+        .firstWhere((c) => c.components.contains('skills'));
+    expect(planned.action, 'adopt');
+    expect(File('$skill/.agent-installer.json').existsSync(), isFalse);
+
+    final ClientResult applied = i.apply(<String>['cursor']).single;
+    expect(applied.problems, isEmpty);
+    expect(File('$skill/.agent-installer.json').existsSync(), isTrue);
+    expect(
+      i.plan(<String>['cursor']).single.changes,
+      isEmpty,
+      reason: 'adopted once',
+    );
+    i.remove(<String>['cursor']);
+    expect(Directory(skill).existsSync(), isFalse);
+  });
+
+  test('an adoption marker takes over a different skill directory', () {
+    write('.cursor/skills/acme-helper/SKILL.md', 'name: acme-helper\nold\n');
+    write('.claude/skills/acme-helper/SKILL.md', 'name: other\n');
+    write(
+      '.agents/skills/acme-helper/.agent-installer.json',
+      '{"product":"other","files":{}}',
+    );
+    write('.agents/skills/acme-helper/SKILL.md', 'name: acme-helper\n');
+    final AgentInstaller i = installer(
+      product: acme(
+        override: <String, Object?>{
+          'skills': <Object?>[
+            <String, Object?>{
+              'name': 'acme-helper',
+              'source': '{bundle}/skills/acme-helper',
+              'adopt': <String, Object?>{
+                'file': 'SKILL.md',
+                'contains': 'name: acme-helper',
+              },
+            },
+          ],
+        },
+      ),
+    );
+    expect(states(status(i, 'cursor'))['skills'], 'outdated');
+    expect(states(status(i, 'claude-code'))['skills'], 'conflict');
+    expect(
+      states(status(i, 'codex'))['skills'],
+      'conflict',
+      reason: 'another product\'s receipt is never taken over',
+    );
+    i.apply(<String>['cursor']);
+    expect(
+      read('.cursor/skills/acme-helper/SKILL.md'),
+      File('$bundle/skills/acme-helper/SKILL.md').readAsStringSync(),
+    );
+    expect(states(status(i, 'cursor'))['skills'], 'current');
+    expect(read('.claude/skills/acme-helper/SKILL.md'), 'name: other\n');
+    expect(
+      () => acme(
+        override: <String, Object?>{
+          'skills': <Object?>[
+            <String, Object?>{
+              'source': '{bundle}/skills/acme-helper',
+              'adopt': <String, Object?>{'file': '../SKILL.md'},
+            },
+          ],
+        },
+      ),
+      throwsA(isA<AgentInstallException>()),
+    );
+  });
+
+  test('replaced and removed directories are backed up like files', () {
+    final AgentInstaller i = installer(backups: '${home.path}/b');
+    final Directory backups = Directory('${home.path}/b/cursor');
+    List<String> skillBackups() => <String>[
+      for (final FileSystemEntity e in backups.listSync())
+        if (e is Directory) e.uri.pathSegments.where((s) => s.isNotEmpty).last,
+    ];
+    for (int n = 0; n < 7; n++) {
+      i.apply(<String>['cursor']);
+      final File receipt = File(
+        '${home.path}/.cursor/skills/acme-helper/.agent-installer.json',
+      );
+      final Map<String, Object?> data =
+          jsonDecode(receipt.readAsStringSync()) as Map<String, Object?>;
+      write('.cursor/skills/acme-helper/OLD.md', 'old $n');
+      (data['files']! as Map<String, Object?>)['OLD.md'] = fnv1a(
+        utf8.encode('old $n'),
+      );
+      receipt.writeAsStringSync(jsonEncode(data));
+    }
+    expect(skillBackups(), hasLength(5));
+    expect(
+      skillBackups(),
+      everyElement(matches(RegExp(r'^acme-helper\.\d{8}T\d+Z\.bak$'))),
+    );
+    final Directory newest = Directory(
+      '${backups.path}/${(skillBackups()..sort()).last}',
+    );
+    expect(
+      File('${newest.path}/OLD.md').readAsStringSync(),
+      'old 5',
+      reason: 'the copy holds the replaced files',
+    );
+
+    i.remove(<String>['cursor']);
+    final Directory removed = Directory(
+      '${backups.path}/${(skillBackups()..sort()).last}',
+    );
+    expect(File('${removed.path}/OLD.md').readAsStringSync(), 'old 6');
+    expect(skillBackups(), hasLength(5));
+  });
+
+  test('a skill directory in use is updated in place', () {
+    final void Function(String, String) rename = renameDirectory;
+    addTearDown(() => renameDirectory = rename);
+    final String skill = '${home.path}/.cursor/skills/acme-helper';
+    int errorCode = Platform.isWindows ? 32 : 16;
+    renameDirectory = (from, to) {
+      if (from.replaceAll(r'\', '/') == skill.replaceAll(r'\', '/')) {
+        throw FileSystemException(
+          'Rename failed',
+          from,
+          OSError('in use', errorCode),
+        );
+      }
+      rename(from, to);
+    };
+    final AgentInstaller i = installer();
+    i.apply(<String>['cursor']);
+    void makeOutdated() {
+      final File receipt = File('$skill/.agent-installer.json');
+      final Map<String, Object?> data =
+          jsonDecode(receipt.readAsStringSync()) as Map<String, Object?>;
+      write('.cursor/skills/acme-helper/nested/OLD.md', 'old');
+      (data['files']! as Map<String, Object?>)['nested/OLD.md'] = fnv1a(
+        utf8.encode('old'),
+      );
+      receipt.writeAsStringSync(jsonEncode(data));
+    }
+
+    makeOutdated();
+    final ClientResult applied = i.apply(<String>['cursor']).single;
+    expect(applied.problems, isEmpty);
+    expect(
+      applied.changes.firstWhere((c) => c.components.contains('skills')).note,
+      contains('in place'),
+    );
+    expect(File('$skill/nested/OLD.md').existsSync(), isFalse);
+    expect(states(status(i, 'cursor'))['skills'], 'current');
+    expect(
+      Directory('${home.path}/.cursor/skills').listSync().map((e) => e.path),
+      hasLength(1),
+      reason: 'no staging copy is left behind',
+    );
+
+    errorCode = 2;
+    makeOutdated();
+    final ClientResult failed = i.apply(<String>['cursor']).single;
+    expect(failed.problems, contains(contains('could not be replaced')));
+    expect(File('$skill/nested/OLD.md').existsSync(), isTrue);
   });
 
   test('outdated skills are replaced', () {
@@ -579,6 +871,66 @@ void main() {
     i.apply(<String>['acme-agent', 'cursor']);
     expect(read('.acme-agent/AGENTS.md'), contains('ACME MANAGED'));
     expect(read('.cursor/my-skills/acme-helper/SKILL.md'), isNotNull);
+  });
+
+  test('extension steps carry a stable code, or other for plain text', () {
+    write(
+      'ext/acme-agent.json',
+      jsonEncode(<String, Object?>{
+        'schemaVersion': 1,
+        'install': <String, Object?>{
+          'detect': <Object?>[
+            <String, Object?>{'path': '~/.acme-agent'},
+          ],
+          'mcp': <String, Object?>{
+            'file': '~/.acme-agent/mcp.json',
+            'format': 'mcp-servers-json',
+          },
+          'afterInstall': <Object?>[
+            <String, Object?>{
+              'code': 'restart_client',
+              'message': 'Restart Acme Agent.',
+            },
+            'Sign in again.',
+          ],
+        },
+      }),
+    );
+    write(
+      'ext/bad-agent.json',
+      jsonEncode(<String, Object?>{
+        'schemaVersion': 1,
+        'install': <String, Object?>{
+          'detect': <Object?>[
+            <String, Object?>{'path': '~/.bad-agent'},
+          ],
+          'mcp': <String, Object?>{
+            'file': '~/.bad-agent/mcp.json',
+            'format': 'mcp-servers-json',
+          },
+          'afterInstall': <Object?>[
+            <String, Object?>{'code': 'dance', 'message': 'x'},
+          ],
+        },
+      }),
+    );
+    final InstallTargets targets = InstallTargets.load(
+      extensionsDirectory: '${home.path}/ext',
+    );
+    expect(targets.problems.single.file, 'bad-agent.json');
+    expect(targets.problems.single.message, contains('restart_client'));
+    final ClientResult result = installer(
+      targets: targets,
+    ).apply(<String>['acme-agent']).single;
+    expect(result.actions, <String>['Restart Acme Agent.', 'Sign in again.']);
+    expect(result.actionCodes, <String>['restart_client', 'other']);
+    expect(
+      installer(
+        targets: targets,
+      ).apply(<String>['acme-agent']).single.actionCodes,
+      isEmpty,
+      reason: 'nothing changed, nothing to do',
+    );
   });
 
   test('manifests are validated up front', () {

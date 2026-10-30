@@ -54,6 +54,12 @@
           "description": "Text in the command or URL that shows a same-name entry is this product's. Defaults to the hook markers, else the command.",
           "type": "array",
           "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+        },
+        "preserveArgs": {
+          "description": "Options whose value in the product's existing entry is kept on update, e.g. [\"--tool-profile\"]. The existing `--name value` or `--name=value` replaces the option in args, or is appended when args lack it; a value starting with - is not taken. Applies only to an entry that carries a marker.",
+          "type": "array",
+          "maxItems": 64,
+          "items": { "type": "string", "pattern": "^--?[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$" }
         }
       }
     },
@@ -102,7 +108,17 @@
       "required": ["source"],
       "properties": {
         "name": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
-        "source": { "type": "string", "description": "Absolute directory in the product bundle." }
+        "source": { "type": "string", "description": "Absolute directory in the product bundle." },
+        "adopt": {
+          "description": "Takes over an existing directory without a receipt when this file exists in it (and contains the text, if given). A directory whose files already equal the source is always adopted; another product's receipt never is.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file"],
+          "properties": {
+            "file": { "type": "string", "description": "Relative path with / separators, e.g. SKILL.md." },
+            "contains": { "type": "string", "minLength": 1, "maxLength": 256 }
+          }
+        }
       }
     }
   }

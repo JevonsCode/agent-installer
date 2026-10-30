@@ -3,7 +3,12 @@
 library;
 
 export 'src/extensions.dart'
-    show ExtensionFile, ExtensionProblem, defaultExtensionsDirectory;
+    show
+        ExtensionFile,
+        ExtensionProblem,
+        defaultBackupsDirectory,
+        defaultExtensionsDirectory,
+        defaultSharedDirectory;
 export 'src/environment.dart' show InstallEnvironment;
 export 'src/errors.dart' show AgentInstallException;
 export 'src/installer.dart'
@@ -18,4 +23,10 @@ export 'src/installer.dart'
 export 'src/json_edit.dart' show JsonEdit;
 export 'src/manifest.dart' show ProductManifest;
 export 'src/targets.dart'
-    show InstallTarget, InstallTargets, builtinInstallTargets, hookEvents;
+    show
+        AfterInstallAction,
+        InstallTarget,
+        InstallTargets,
+        actionCodes,
+        builtinInstallTargets,
+        hookEvents;
