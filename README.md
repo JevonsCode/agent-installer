@@ -12,6 +12,21 @@ clients a person selects, with a dry-run preview, status and removal.
 什么”（[产品清单](#产品清单)），客户端“装在哪、什么格式”由内置目录和扩展文件描述
 （[安装目标](#安装目标)），写入由一组固定代码完成，清单和扩展文件都不能执行代码。
 
+## 下载
+
+每个版本在 [Releases](https://github.com/JevonsCode/agent-installer/releases) 提供编译好的可执行文件，不需要安装 Dart：
+
+| 平台 | 文件 |
+| --- | --- |
+| macOS（Apple 芯片） | `agent-installer-macos-arm64` |
+| macOS（Intel） | `agent-installer-macos-x64` |
+| Linux x64 / arm64 | `agent-installer-linux-x64`、`agent-installer-linux-arm64` |
+| Windows x64 | `agent-installer-windows-x64.exe` |
+
+用同目录的 `SHA256SUMS` 校验。macOS 上通过浏览器下载的文件需要先执行
+`xattr -d com.apple.quarantine <文件>` 并 `chmod +x`；用 `curl` 下载的只需 `chmod +x`。
+Node 宿主把下载的文件路径作为 `executable` 传给绑定即可。
+
 ## 构建与依赖
 
 需要 Dart SDK 3.10 或更高版本。Node 宿主为每个平台编译原生可执行文件：

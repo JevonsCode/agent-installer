@@ -1,0 +1,83 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  build:
+    name: build-${{ matrix.target }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: macos-arm64
+            os: macos-15
+            exe: ''
+          - target: macos-x64
+            os: macos-15-intel
+            exe: ''
+          - target: linux-x64
+            os: ubuntu-latest
+            exe: ''
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+            exe: ''
+          - target: windows-x64
+            os: windows-latest
+            exe: .exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - name: Tag matches pubspec version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version: *//p' pubspec.yaml)
+          test "v$version" = "$GITHUB_REF_NAME" || {
+            echo "Tag $GITHUB_REF_NAME does not match pubspec version $version"; exit 1; }
+      - run: dart pub get
+      - run: dart test
+      - name: Compile
+        shell: bash
+        run: |
+          mkdir -p dist
+          dart compile exe bin/agent_installer.dart \
+            -o "dist/agent-installer-${{ matrix.target }}${{ matrix.exe }}"
+      - name: Smoke test
+        shell: bash
+        run: |
+          home=$(mktemp -d)
+          HOME="$home" USERPROFILE="$home" APPDATA="$home/AppData" \
+            "dist/agent-installer-${{ matrix.target }}${{ matrix.exe }}" \
+            scan --json --extensions "$home/extensions" > scan.json
+          grep -q '"clients"' scan.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-installer-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum agent-installer-* > SHA256SUMS
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "agent-installer ${GITHUB_REF_NAME#v}" \
+            --notes "Prebuilt executables for macOS, Linux and Windows. Verify downloads with SHA256SUMS."
