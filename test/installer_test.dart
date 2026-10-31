@@ -382,6 +382,114 @@ void main() {
     expect(states(status(i, 'codex'))['hooks'], 'current');
   });
 
+  test('Codex TOML table separators do not cause updates', () {
+    write(
+      '.codex/config.toml',
+      '[[hooks.Stop]]\n\n[[hooks.Stop.hooks]]\n'
+          'type = "command"\ncommand = "other --stop"\n',
+    );
+    final AgentInstaller i = installer();
+    i.apply(<String>['codex']);
+    final String installed = read('.codex/config.toml')!;
+    final String original =
+        '${installed.replaceFirst('[[hooks.Stop.hooks]]', '\n[[hooks.Stop.hooks]]').replaceFirst('[mcp_servers.acme]', '\n[mcp_servers.acme]')}\n'
+        '[unrelated]\nvalue = "keep"\n# keep this comment\n\n\n';
+    write('.codex/config.toml', original);
+    expect(states(status(i, 'codex'))['mcp'], 'current');
+    expect(states(status(i, 'codex'))['hooks'], 'current');
+    expect(i.plan(<String>['codex']).single.changes, isEmpty);
+    expect(i.apply(<String>['codex']).single.changes, isEmpty);
+    expect(read('.codex/config.toml'), original);
+
+    write(
+      '.codex/config.toml',
+      original.replaceFirst('timeout = 10', 'timeout = 11'),
+    );
+    expect(states(status(i, 'codex'))['mcp'], 'current');
+    expect(states(status(i, 'codex'))['hooks'], 'outdated');
+    final PlannedChange change = i
+        .plan(<String>['codex'])
+        .single
+        .changes
+        .single;
+    expect(change.components, <String>['hooks']);
+    i.apply(<String>['codex']);
+    expect(
+      read('.codex/config.toml'),
+      endsWith('[unrelated]\nvalue = "keep"\n# keep this comment\n\n\n'),
+    );
+
+    write(
+      '.codex/config.toml',
+      original.replaceFirst(
+        'startup_timeout_sec = 20',
+        'startup_timeout_sec = 21',
+      ),
+    );
+    expect(states(status(i, 'codex'))['mcp'], 'outdated');
+    expect(states(status(i, 'codex'))['hooks'], 'current');
+    expect(i.plan(<String>['codex']).single.changes.single.components, <String>[
+      'mcp',
+    ]);
+    i.apply(<String>['codex']);
+    expect(
+      read('.codex/config.toml'),
+      endsWith('[unrelated]\nvalue = "keep"\n# keep this comment\n\n\n'),
+    );
+  });
+
+  test('Codex TOML ignores owned table separators and EOF blanks', () {
+    write(
+      '.codex/config.toml',
+      '[[hooks.Stop]]\n\n[[hooks.Stop.hooks]]\ncommand = "other --stop"\n',
+    );
+    final AgentInstaller i = installer();
+    i.apply(<String>['codex']);
+    final String installed = read('.codex/config.toml')!;
+    for (final String newline in <String>['\n', '\r\n']) {
+      for (final bool extra in <bool>[false, true]) {
+        String original = installed
+            .replaceFirst(
+              'matcher = "^(startup|resume)\$"\n\n',
+              extra
+                  ? 'matcher = "^(startup|resume)\$"\n\n\n'
+                  : 'matcher = "^(startup|resume)\$"\n',
+            )
+            .replaceFirst(
+              '\n[mcp_servers.acme]',
+              extra ? '\n\n\n[mcp_servers.acme]' : '\n[mcp_servers.acme]',
+            );
+        if (extra) original += '\n\n';
+        original = original.replaceAll('\n', newline);
+        write('.codex/config.toml', original);
+        expect(states(status(i, 'codex'))['mcp'], 'current');
+        expect(states(status(i, 'codex'))['hooks'], 'current');
+        expect(i.plan(<String>['codex']).single.changes, isEmpty);
+        expect(i.apply(<String>['codex']).single.changes, isEmpty);
+        expect(read('.codex/config.toml'), original);
+      }
+    }
+    final int mcpAt = installed.indexOf('[mcp_servers.acme]');
+    final String hooksAtEnd =
+        '${installed.substring(mcpAt)}\n${installed.substring(0, mcpAt)}\n\n';
+    write('.codex/config.toml', hooksAtEnd);
+    expect(states(status(i, 'codex'))['mcp'], 'current');
+    expect(states(status(i, 'codex'))['hooks'], 'current');
+    expect(i.plan(<String>['codex']).single.changes, isEmpty);
+    expect(i.apply(<String>['codex']).single.changes, isEmpty);
+    expect(read('.codex/config.toml'), hooksAtEnd);
+
+    final String withComments = hooksAtEnd.replaceFirst(
+      'timeout = 10',
+      '# keep the hook comment\ntimeout = 10 # keep the inline comment',
+    );
+    write('.codex/config.toml', withComments);
+    expect(states(status(i, 'codex'))['hooks'], 'current');
+    expect(i.plan(<String>['codex']).single.changes, isEmpty);
+    expect(i.apply(<String>['codex']).single.changes, isEmpty);
+    expect(read('.codex/config.toml'), withComments);
+  });
+
   test('equivalent instruction line endings do not cause a rewrite', () {
     final ProductManifest product = ProductManifest.fromJson(<String, Object?>{
       'schemaVersion': 1,
