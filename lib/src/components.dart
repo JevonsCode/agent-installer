@@ -401,7 +401,17 @@ void _hookParts(
           TextPart(
             'hooks',
             toml,
-            (t) => CodexToml.setHooks(t, groups, product.isOurHook),
+            (t) => CodexToml.setHooks(
+              t,
+              groups,
+              product.isOurHook,
+              commandsEqual: (a, b) => hookCommandsEqual(
+                a,
+                b,
+                windows: env.windows,
+                powerShell: powerShell,
+              ),
+            ),
             (t) => CodexToml.setHooks(
               t,
               const <TomlHookGroup>[],
@@ -436,7 +446,14 @@ void _hookParts(
     TextPart(
       'hooks',
       jsonPath,
-      (t) => _jsonHooks(t, desired, product, cursor: cursor),
+      (t) => _jsonHooks(
+        t,
+        desired,
+        product,
+        cursor: cursor,
+        windows: env.windows,
+        powerShell: powerShell,
+      ),
       (t) => _jsonHooks(
         t,
         const <String, List<Object?>>{},
@@ -455,6 +472,8 @@ String? _jsonHooks(
   Map<String, List<Object?>> desired,
   ResolvedProduct product, {
   required bool cursor,
+  bool windows = false,
+  bool powerShell = false,
 }) {
   final Map<String, Object?> root = _root(text);
   if (cursor && root['version'] != null && root['version'] != 1) {
@@ -488,7 +507,23 @@ String? _jsonHooks(
     }
     final List<Object?> next = <Object?>[...kept]
       ..insertAll(at ?? kept.length, desired[event] ?? const <Object?>[]);
-    if (deepEquals(groups, next)) continue;
+    _preserveHookCommands(
+      groups,
+      next,
+      product,
+      cursor: cursor,
+      windows: windows,
+      powerShell: powerShell,
+    );
+    if (_hookGroupsEqual(
+      groups,
+      next,
+      cursor: cursor,
+      windows: windows,
+      powerShell: powerShell,
+    )) {
+      continue;
+    }
     changed = true;
     result = next.isEmpty
         ? JsonEdit.remove(result, <String>['hooks', event])
@@ -594,6 +629,194 @@ TextPart _permissionsPart(String file, List<String> rules) {
     },
     (t) => allow(t).any(rules.contains),
   );
+}
+
+/// Compares literal commands only. Shell expressions fall back to text equality.
+bool hookCommandsEqual(
+  String a,
+  String b, {
+  required bool windows,
+  required bool powerShell,
+}) {
+  if (a == b) return true;
+  final List<String>? left = _parseCommand(a, windows, powerShell);
+  final List<String>? right = _parseCommand(b, windows, powerShell);
+  return left != null && right != null && deepEquals(left, right);
+}
+
+List<String>? _parseCommand(String text, bool windows, bool powerShell) {
+  int i = 0;
+  if (powerShell) {
+    if (text.length < 2 ||
+        text[0] != '&' ||
+        (text[1] != ' ' && text[1] != '\t'))
+      return null;
+    i = 1;
+  }
+  final List<String> args = <String>[];
+  while (i < text.length) {
+    while (i < text.length && (text[i] == ' ' || text[i] == '\t')) {
+      i++;
+    }
+    if (i == text.length) break;
+    final StringBuffer arg = StringBuffer();
+    bool started = false;
+    bool quoted = false;
+    while (i < text.length && text[i] != ' ' && text[i] != '\t') {
+      final String c = text[i];
+      if (c == "'" && (!windows || powerShell)) {
+        if (powerShell && started) return null;
+        started = true;
+        quoted = true;
+        i++;
+        bool closed = false;
+        while (i < text.length) {
+          if (text[i] == "'") {
+            if (powerShell && i + 1 < text.length && text[i + 1] == "'") {
+              arg.write("'");
+              i += 2;
+            } else {
+              i++;
+              closed = true;
+              break;
+            }
+          } else {
+            if (text[i] == '\n' || text[i] == '\r') return null;
+            arg.write(text[i++]);
+          }
+        }
+        if (!closed) return null;
+      } else if (c == '"' && windows && !powerShell) {
+        if (started) return null;
+        started = true;
+        quoted = true;
+        i++;
+        while (i < text.length && text[i] != '"') {
+          if ('%!\r\n'.contains(text[i])) return null;
+          arg.write(text[i++]);
+        }
+        if (i == text.length || (i > 0 && text[i - 1] == r'\')) return null;
+        i++;
+      } else if (c == r'\' && !windows && !powerShell) {
+        started = true;
+        i++;
+        if (i == text.length || text[i] == '\n' || text[i] == '\r') {
+          return null;
+        }
+        arg.write(text[i++]);
+      } else {
+        if (quoted && (windows || powerShell)) return null;
+        final RegExp safe = powerShell ? _powerShellPlain : _plain;
+        if (!safe.hasMatch(c) || (windows && c == '%')) return null;
+        started = true;
+        arg.write(c);
+        i++;
+      }
+    }
+    final String value = arg.toString();
+    if (powerShell && ((!quoted && value == '--') || (args.isEmpty && !quoted)))
+      return null;
+    args.add(value);
+  }
+  return args.isEmpty ? null : args;
+}
+
+bool _hookGroupsEqual(
+  List<Object?> a,
+  List<Object?> b, {
+  required bool cursor,
+  required bool windows,
+  required bool powerShell,
+}) {
+  bool handlerEquals(Object? x, Object? y) {
+    if (x is! Map || y is! Map || x.length != y.length) {
+      return deepEquals(x, y);
+    }
+    return x.keys.every((key) {
+      if (!y.containsKey(key)) return false;
+      if (key == 'command' && x[key] is String && y[key] is String) {
+        return hookCommandsEqual(
+          x[key] as String,
+          y[key] as String,
+          windows: windows,
+          powerShell: powerShell,
+        );
+      }
+      return deepEquals(x[key], y[key]);
+    });
+  }
+
+  if (a.length != b.length) return false;
+  for (int i = 0; i < a.length; i++) {
+    if (cursor) {
+      if (!handlerEquals(a[i], b[i])) return false;
+    } else {
+      final Object? x = a[i];
+      final Object? y = b[i];
+      if (x is! Map || y is! Map || x.length != y.length) return false;
+      for (final Object? key in x.keys) {
+        if (!y.containsKey(key)) return false;
+        if (key == 'hooks' && x[key] is List && y[key] is List) {
+          final List left = x[key] as List;
+          final List right = y[key] as List;
+          if (left.length != right.length) return false;
+          for (int j = 0; j < left.length; j++) {
+            if (!handlerEquals(left[j], right[j])) return false;
+          }
+        } else if (!deepEquals(x[key], y[key])) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
+void _preserveHookCommands(
+  List<Object?> old,
+  List<Object?> next,
+  ResolvedProduct product, {
+  required bool cursor,
+  required bool windows,
+  required bool powerShell,
+}) {
+  Object? preserve(Object? a, Object? b) {
+    if (a is! Map || b is! Map || !_isOurs(a, product)) return b;
+    final Object? previous = a['command'];
+    final Object? desired = b['command'];
+    if (previous is! String ||
+        desired is! String ||
+        !hookCommandsEqual(
+          previous,
+          desired,
+          windows: windows,
+          powerShell: powerShell,
+        ))
+      return b;
+    return <String, Object?>{...b.cast<String, Object?>(), 'command': previous};
+  }
+
+  for (int i = 0; i < old.length && i < next.length; i++) {
+    if (cursor) {
+      next[i] = preserve(old[i], next[i]);
+    } else {
+      final Object? a = old[i];
+      final Object? b = next[i];
+      if (a is! Map ||
+          b is! Map ||
+          a['hooks'] is! List ||
+          b['hooks'] is! List) {
+        continue;
+      }
+      final List before = a['hooks'] as List;
+      final List after = b['hooks'] as List;
+      final List<Object?> copy = <Object?>[...after];
+      for (int j = 0; j < before.length && j < copy.length; j++) {
+        copy[j] = preserve(before[j], copy[j]);
+      }
+      next[i] = <String, Object?>{...b.cast<String, Object?>(), 'hooks': copy};
+    }
+  }
 }
 
 /// Joins a command for a shell, quoting arguments that need it.

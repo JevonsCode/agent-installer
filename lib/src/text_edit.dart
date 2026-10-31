@@ -124,9 +124,19 @@ abstract final class CodexToml {
   static String setHooks(
     String? text,
     List<TomlHookGroup> groups,
-    bool Function(String command) ours,
-  ) {
+    bool Function(String command) ours, {
+    bool Function(String, String)? commandsEqual,
+  }) {
     final List<_Section> sections = _sections(text);
+    final List<TomlHookGroup> effective = <TomlHookGroup>[
+      for (final TomlHookGroup g in groups)
+        (
+          event: g.event,
+          matcher: g.matcher,
+          handler: <String, Object?>{...g.handler},
+        ),
+    ];
+    final Map<String, int> seen = <String, int>{};
     final List<_Section> out = <_Section>[];
     final Map<String, int> insertAt = <String, int>{};
     int k = 0;
@@ -161,11 +171,40 @@ abstract final class CodexToml {
           ..addAll(kept.expand((h) => h));
       }
       if (kept.length != handlers.length) {
+        if (commandsEqual != null) {
+          final List<TomlHookGroup> wanted = effective
+              .where((g) => g.event == event)
+              .toList();
+          for (final List<_Section> handler in handlers.where(
+            (h) => _isOurs(h, ours),
+          )) {
+            final int index = seen.update(
+              event,
+              (n) => n + 1,
+              ifAbsent: () => 0,
+            );
+            if (index >= wanted.length) continue;
+            final Object? desired = wanted[index].handler['command'];
+            if (desired is! String) continue;
+            for (final String line in handler.first.lines) {
+              final RegExpMatch? match = _command.firstMatch(line);
+              if (match == null) continue;
+              try {
+                final Object? old = jsonDecode(match.group(1)!);
+                if (old is String && commandsEqual(old, desired)) {
+                  wanted[index].handler['command'] = old;
+                }
+              } on FormatException {
+                // Other TOML string forms keep the existing text comparison.
+              }
+            }
+          }
+        }
         insertAt.putIfAbsent(event, () => out.length);
       }
     }
     final List<String> events = <String>{
-      for (final TomlHookGroup g in groups) g.event,
+      for (final TomlHookGroup g in effective) g.event,
     }.toList();
     // Events that share a position keep the order of [groups].
     final List<(int, int, String)> placed =
@@ -177,12 +216,12 @@ abstract final class CodexToml {
         );
     int offset = 0;
     for (final (int index, int _, String event) in placed) {
-      final List<_Section> block = _hookSections(groups, event);
+      final List<_Section> block = _hookSections(effective, event);
       out.insertAll(index + offset, block);
       offset += block.length;
     }
     for (final String event in events.where((e) => !insertAt.containsKey(e))) {
-      out.addAll(_hookSections(groups, event));
+      out.addAll(_hookSections(effective, event));
     }
     return _join(out, text);
   }
@@ -424,10 +463,19 @@ abstract final class MarkdownBlock {
 
   /// Replaces the block in place, or appends it after a blank line.
   static String set(String? text, String begin, String end, String body) {
-    final String nl = (text ?? '').contains('\r\n') ? '\r\n' : '\n';
-    final String block = '$begin\n${body.trim()}\n$end'.replaceAll('\n', nl);
+    final int firstNewline = (text ?? '').indexOf('\n');
+    final String nl = firstNewline > 0 && text![firstNewline - 1] == '\r'
+        ? '\r\n'
+        : '\n';
+    final String block = '$begin\n${body.trim().replaceAll('\r\n', '\n')}\n$end'
+        .replaceAll('\n', nl);
     final (int, int)? range = _range(text, begin, end);
-    if (range != null) return text!.replaceRange(range.$1, range.$2, block);
+    if (range != null) {
+      final String existing = text!.substring(range.$1, range.$2);
+      if (existing.replaceAll('\r\n', '\n') == block.replaceAll('\r\n', '\n'))
+        return text;
+      return text.replaceRange(range.$1, range.$2, block);
+    }
     final String base = (text ?? '').trimRight();
     return base.isEmpty ? '$block$nl' : '$base$nl$nl$block$nl';
   }
