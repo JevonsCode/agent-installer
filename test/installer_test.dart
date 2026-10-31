@@ -272,70 +272,82 @@ void main() {
     expect(status(i, 'codex').state, 'connected');
   });
 
-  test('equivalent hook commands stay current and are not rewritten', () {
-    final ProductManifest product = ProductManifest.fromJson(<String, Object?>{
-      'schemaVersion': 1,
-      'product': 'acme',
-      'name': 'Acme',
-      'version': '1',
-      'hooks': <String, Object?>{
-        'markers': <String>['acme-hook'],
-        'events': <String, Object?>{
-          'stop': <String, Object?>{
-            'command': <String>[r'C:\tools\acme-hook.exe', '--event', 'Stop'],
-            'timeoutSec': 10,
+  test(
+    'equivalent hook commands stay current and are not rewritten',
+    () {
+      final ProductManifest product = ProductManifest.fromJson(
+        <String, Object?>{
+          'schemaVersion': 1,
+          'product': 'acme',
+          'name': 'Acme',
+          'version': '1',
+          'hooks': <String, Object?>{
+            'markers': <String>['acme-hook'],
+            'events': <String, Object?>{
+              'stop': <String, Object?>{
+                'command': <String>[
+                  r'C:\tools\acme-hook.exe',
+                  '--event',
+                  'Stop',
+                ],
+                'timeoutSec': 10,
+              },
+            },
           },
         },
-      },
-    });
-    final AgentInstaller i = installer(
-      product: product,
-      environment: env(os: 'windows'),
-    );
-    for (final String id in <String>['codex', 'claude-code', 'cursor']) {
-      i.apply(<String>[id]);
-      final String path = switch (id) {
-        'codex' => '.codex/hooks.json',
-        'claude-code' => '.claude/settings.json',
-        _ => '.cursor/hooks.json',
-      };
-      final Map<String, Object?> data = json(path);
-      final Map hooks = data['hooks']! as Map;
-      final List entries = hooks[id == 'cursor' ? 'stop' : 'Stop'] as List;
-      final Map group = entries.single as Map;
-      final Map handler = id == 'cursor'
-          ? group
-          : (group['hooks'] as List).single as Map;
-      handler['command'] = id == 'codex'
-          ? r"& 'C:\tools\acme-hook.exe' '--event' 'Stop'"
-          : r'"C:\tools\acme-hook.exe" "--event" "Stop"';
-      final String original =
-          '${const JsonEncoder.withIndent('  ').convert(data)}\n';
-      write(path, original);
-      expect(states(status(i, id))['hooks'], 'current', reason: id);
-      expect(i.plan(<String>[id]).single.changes, isEmpty, reason: id);
-      expect(i.apply(<String>[id]).single.changes, isEmpty, reason: id);
-      expect(read(path), original, reason: id);
-      handler['timeout'] = 11;
-      write(path, jsonEncode(data));
-      expect(states(status(i, id))['hooks'], 'outdated', reason: id);
-      i.apply(<String>[id]);
-      expect(
-        read(path),
-        contains(id == 'codex' ? "'--event'" : r'\"--event\"'),
-        reason: 'updating another field preserves the command: $id',
       );
-      handler['timeout'] = 10;
-      handler['command'] = (handler['command'] as String).replaceAll(
-        'Stop',
-        'Other',
+      final AgentInstaller i = installer(
+        product: product,
+        environment: env(os: 'windows'),
       );
-      write(path, jsonEncode(data));
-      expect(states(status(i, id))['hooks'], 'outdated', reason: id);
-      expect(i.apply(<String>[id]).single.changes, isNotEmpty, reason: id);
-      expect(states(status(i, id))['hooks'], 'current', reason: id);
-    }
-  });
+      for (final String id in <String>['codex', 'claude-code', 'cursor']) {
+        i.apply(<String>[id]);
+        final String path = switch (id) {
+          'codex' => '.codex/hooks.json',
+          'claude-code' => '.claude/settings.json',
+          _ => '.cursor/hooks.json',
+        };
+        final Map<String, Object?> data = json(path);
+        final Map hooks = data['hooks']! as Map;
+        final List entries = hooks[id == 'cursor' ? 'stop' : 'Stop'] as List;
+        final Map group = entries.single as Map;
+        final Map handler = id == 'cursor'
+            ? group
+            : (group['hooks'] as List).single as Map;
+        handler['command'] = id == 'codex'
+            ? r"& 'C:\tools\acme-hook.exe' '--event' 'Stop'"
+            : r'"C:\tools\acme-hook.exe" "--event" "Stop"';
+        final String original =
+            '${const JsonEncoder.withIndent('  ').convert(data)}\n';
+        write(path, original);
+        expect(states(status(i, id))['hooks'], 'current', reason: id);
+        expect(i.plan(<String>[id]).single.changes, isEmpty, reason: id);
+        expect(i.apply(<String>[id]).single.changes, isEmpty, reason: id);
+        expect(read(path), original, reason: id);
+        handler['timeout'] = 11;
+        write(path, jsonEncode(data));
+        expect(states(status(i, id))['hooks'], 'outdated', reason: id);
+        i.apply(<String>[id]);
+        expect(
+          read(path),
+          contains(id == 'codex' ? "'--event'" : r'\"--event\"'),
+          reason: 'updating another field preserves the command: $id',
+        );
+        handler['timeout'] = 10;
+        handler['command'] = (handler['command'] as String).replaceAll(
+          'Stop',
+          'Other',
+        );
+        write(path, jsonEncode(data));
+        expect(states(status(i, id))['hooks'], 'outdated', reason: id);
+        expect(i.apply(<String>[id]).single.changes, isNotEmpty, reason: id);
+        expect(states(status(i, id))['hooks'], 'current', reason: id);
+      }
+    },
+    skip: Platform.isWindows
+        ? false
+        : 'Windows install paths need a Windows host.',
+  );
 
   test('Codex TOML keeps equivalent commands and updates different ones', () {
     write(
