@@ -905,23 +905,19 @@ void main() {
     expect(states(status(i, 'claude-code'))['skills'], 'current');
   });
 
-  test(
-    'a symlinked config stays a link',
-    () {
-      write('dotfiles/mcp.json', '{}');
-      Directory('${home.path}/.cursor').createSync();
-      Link(
-        '${home.path}/.cursor/mcp.json',
-      ).createSync('${home.path}/dotfiles/mcp.json');
-      installer().apply(<String>['cursor']);
-      expect(
-        FileSystemEntity.isLinkSync('${home.path}/.cursor/mcp.json'),
-        isTrue,
-      );
-      expect(read('dotfiles/mcp.json'), contains('acme'));
-    },
-    skip: Platform.isWindows ? 'POSIX links only.' : false,
-  );
+  test('a symlinked config stays a link', () {
+    write('dotfiles/mcp.json', '{}');
+    Directory('${home.path}/.cursor').createSync();
+    Link(
+      '${home.path}/.cursor/mcp.json',
+    ).createSync('${home.path}/dotfiles/mcp.json');
+    installer().apply(<String>['cursor']);
+    expect(
+      FileSystemEntity.isLinkSync('${home.path}/.cursor/mcp.json'),
+      isTrue,
+    );
+    expect(read('dotfiles/mcp.json'), contains('acme'));
+  }, skip: Platform.isWindows ? 'POSIX links only.' : false);
 
   test('an extension file adds or customizes install targets', () {
     write(
