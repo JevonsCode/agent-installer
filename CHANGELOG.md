@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2 (unreleased)
+
+### Fixed
+
+- Codex MCP and hook table separators no longer make components appear
+  outdated or cause a config rewrite when only blank lines differ. Unrelated
+  end-of-file spacing is preserved when updating these components.
+
 ## 0.2.1 (2026-11-01)
 
 ### Changed

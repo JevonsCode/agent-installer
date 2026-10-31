@@ -96,7 +96,14 @@ abstract final class CodexToml {
         for (int i = 0; i < blanks; i++) '',
       ]);
     }
-    return _join(sections, text);
+    if (found.isNotEmpty &&
+        _sameLinesWithoutTrailingBlanks(
+          _sections(text)[found.single].lines,
+          sections[found.single].lines,
+        )) {
+      return text!;
+    }
+    return _join(sections, text, preserveUnchangedEnd: true);
   }
 
   /// Removes `[mcp_servers.<name>]` and its sub-tables.
@@ -223,7 +230,91 @@ abstract final class CodexToml {
     for (final String event in events.where((e) => !insertAt.containsKey(e))) {
       out.addAll(_hookSections(effective, event));
     }
-    return _join(out, text);
+    if (text != null && _sameHooksExceptBlanks(sections, out, ours))
+      return text;
+    return _join(out, text, preserveUnchangedEnd: true);
+  }
+
+  static bool _sameHooksExceptBlanks(
+    List<_Section> before,
+    List<_Section> after,
+    bool Function(String) ours,
+  ) {
+    Set<int> owned(List<_Section> sections) {
+      final Set<int> result = <int>{};
+      for (int i = 0; i < sections.length; i++) {
+        final String? event = sections[i].array
+            ? _groupEvent(sections[i])
+            : null;
+        if (event == null) continue;
+        final String handlerName = 'hooks.$event.hooks';
+        for (int j = i + 1; j < sections.length; j++) {
+          final _Section s = sections[j];
+          if (s.array && s.name == handlerName) {
+            if (_isOurs(<_Section>[s], ours)) {
+              result.add(i);
+              result.add(j);
+            }
+          } else if (!(s.name ?? '').startsWith('$handlerName.')) {
+            break;
+          }
+        }
+      }
+      return result;
+    }
+
+    if (before.length != after.length) return false;
+    final Set<int> oldOwned = owned(before);
+    final Set<int> newOwned = owned(after);
+    for (int i = 0; i < before.length; i++) {
+      if (before[i].name != after[i].name ||
+          before[i].array != after[i].array) {
+        return false;
+      }
+      final List<String> a = before[i].lines;
+      final List<String> b = after[i].lines;
+      if (oldOwned.contains(i) && newOwned.contains(i)) {
+        final List<String>? withComments = _retainHookComments(a, b);
+        if (withComments == null ||
+            !_sameLinesWithoutTrailingBlanks(a, withComments)) {
+          return false;
+        }
+      } else if (!_sameLines(a, b)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Carry user comments into the comparison only when every generated line
+  // still matches. Returning the original then preserves the comments exactly.
+  static List<String>? _retainHookComments(
+    List<String> old,
+    List<String> next,
+  ) {
+    final List<String> result = <String>[];
+    int index = 0;
+    for (final String line in old) {
+      if (line.trim().isEmpty || line.trimLeft().startsWith('#')) {
+        result.add(line);
+        continue;
+      }
+      while (index < next.length && next[index].trim().isEmpty) {
+        index++;
+      }
+      if (index == next.length) return null;
+      final String wanted = next[index++];
+      if (line != wanted &&
+          !(line.startsWith(wanted) &&
+              line.substring(wanted.length).trimLeft().startsWith('#'))) {
+        return null;
+      }
+      result.add(line);
+    }
+    while (index < next.length && next[index].trim().isEmpty) {
+      index++;
+    }
+    return index == next.length ? result : null;
   }
 
   static List<_Section> _hookSections(
@@ -427,7 +518,26 @@ List<_Section> _sections(String? text) {
   return sections;
 }
 
-String _join(List<_Section> sections, String? original) {
+bool _sameLines(List<String> a, List<String> b) =>
+    a.length == b.length && a.indexed.every((e) => e.$2 == b[e.$1]);
+
+bool _sameLinesWithoutTrailingBlanks(List<String> a, List<String> b) {
+  List<String> trimmed(List<String> lines) {
+    int end = lines.length;
+    while (end > 0 && lines[end - 1].trim().isEmpty) {
+      end--;
+    }
+    return lines.sublist(0, end);
+  }
+
+  return _sameLines(trimmed(a), trimmed(b));
+}
+
+String _join(
+  List<_Section> sections,
+  String? original, {
+  bool preserveUnchangedEnd = false,
+}) {
   final List<String> lines = <String>[];
   for (final _Section s in sections) {
     if (s.generated && lines.isNotEmpty && lines.last.trim().isNotEmpty) {
@@ -439,6 +549,18 @@ String _join(List<_Section> sections, String? original) {
     lines.removeLast();
   }
   final String nl = (original ?? '').contains('\r\n') ? '\r\n' : '\n';
+  if (preserveUnchangedEnd && original != null && sections.isNotEmpty) {
+    final _Section oldLast = _sections(original).last;
+    final _Section newLast = sections.last;
+    if (oldLast.name == newLast.name &&
+        oldLast.array == newLast.array &&
+        _sameLines(oldLast.lines, newLast.lines)) {
+      final String ending = RegExp(
+        r'(?:\r?\n[ \t]*)*$',
+      ).firstMatch(original)!.group(0)!;
+      return '${lines.join(nl)}$ending';
+    }
+  }
   return lines.isEmpty ? '' : '${lines.join(nl)}$nl';
 }
 
