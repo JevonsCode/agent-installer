@@ -23,6 +23,9 @@
 
 ### Changed
 
+- Hook commands with equivalent literal arguments no longer cause updates
+  solely because of quoting. Managed instruction blocks preserve the file's
+  line endings and compare equally across LF and CRLF.
 - Code and the README no longer describe rules of particular host products.
   A short, neutral [Integrating a host](docs/integrating-a-host.md) guide
   covers the host flow with generic examples.
@@ -31,7 +34,7 @@
   `& 'C:\path\node.exe' 'C:\path with spaces\hook.js' --flag`, with every
   argument that is not plain written as a single-quoted literal (`''` for a
   quote inside). Other clients and platforms are unchanged. An existing
-  Codex hook carrying the product's marker is rewritten on the next `apply`.
+  Codex hook carrying the product's marker is updated if its command differs.
 - New manifest field `mcp.preserveArgs`: options such as `--tool-profile`
   whose value the person chose in the product's existing entry are kept on
   update (Codex TOML, JSON `args` and OpenCode `command` alike), replacing

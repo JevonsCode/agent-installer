@@ -64,4 +64,42 @@ void main() {
       r'"C:\x y\a.exe" --flag',
     );
   });
+
+  test('literal command equivalence is conservative', () {
+    bool equal(String a, String b, {bool windows = false, bool ps = false}) =>
+        hookCommandsEqual(a, b, windows: windows, powerShell: ps);
+    expect(
+      equal(
+        "& 'node.exe' '--flag' 'it''s'",
+        "& 'node.exe' --flag 'it''s'",
+        windows: true,
+        ps: true,
+      ),
+      isTrue,
+    );
+    expect(
+      equal(
+        r'"C:\node.exe" "--flag" "Stop"',
+        r'"C:\node.exe" --flag Stop',
+        windows: true,
+      ),
+      isTrue,
+    );
+    expect(
+      equal(r"/opt/node 'it'\''s' '--flag'", r"/opt/node 'it'\''s' --flag"),
+      isTrue,
+    );
+    expect(equal("node '--flag' ''", "node --flag ''"), isTrue);
+    expect(equal("node '--flag' x", "node --flag y"), isFalse);
+    expect(equal(r'node "$HOME"', r"node '$HOME'"), isFalse);
+    expect(equal("node '--flag", "node --flag"), isFalse);
+    expect(
+      equal(r'"C:\node.exe" "%PATH%"', r'"C:\node.exe" %PATH%', windows: true),
+      isFalse,
+    );
+    expect(
+      equal("& 'node.exe' --", "& 'node.exe' '--'", windows: true, ps: true),
+      isFalse,
+    );
+  });
 }

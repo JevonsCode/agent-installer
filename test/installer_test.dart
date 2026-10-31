@@ -272,6 +272,125 @@ void main() {
     expect(status(i, 'codex').state, 'connected');
   });
 
+  test('equivalent hook commands stay current and are not rewritten', () {
+    final ProductManifest product = ProductManifest.fromJson(<String, Object?>{
+      'schemaVersion': 1,
+      'product': 'acme',
+      'name': 'Acme',
+      'version': '1',
+      'hooks': <String, Object?>{
+        'markers': <String>['acme-hook'],
+        'events': <String, Object?>{
+          'stop': <String, Object?>{
+            'command': <String>[r'C:\tools\acme-hook.exe', '--event', 'Stop'],
+            'timeoutSec': 10,
+          },
+        },
+      },
+    });
+    final AgentInstaller i = installer(
+      product: product,
+      environment: env(os: 'windows'),
+    );
+    for (final String id in <String>['codex', 'claude-code', 'cursor']) {
+      i.apply(<String>[id]);
+      final String path = switch (id) {
+        'codex' => '.codex/hooks.json',
+        'claude-code' => '.claude/settings.json',
+        _ => '.cursor/hooks.json',
+      };
+      final Map<String, Object?> data = json(path);
+      final Map hooks = data['hooks']! as Map;
+      final List entries = hooks[id == 'cursor' ? 'stop' : 'Stop'] as List;
+      final Map group = entries.single as Map;
+      final Map handler = id == 'cursor'
+          ? group
+          : (group['hooks'] as List).single as Map;
+      handler['command'] = id == 'codex'
+          ? r"& 'C:\tools\acme-hook.exe' '--event' 'Stop'"
+          : r'"C:\tools\acme-hook.exe" "--event" "Stop"';
+      final String original =
+          '${const JsonEncoder.withIndent('  ').convert(data)}\n';
+      write(path, original);
+      expect(states(status(i, id))['hooks'], 'current', reason: id);
+      expect(i.plan(<String>[id]).single.changes, isEmpty, reason: id);
+      expect(i.apply(<String>[id]).single.changes, isEmpty, reason: id);
+      expect(read(path), original, reason: id);
+      handler['timeout'] = 11;
+      write(path, jsonEncode(data));
+      expect(states(status(i, id))['hooks'], 'outdated', reason: id);
+      i.apply(<String>[id]);
+      expect(
+        read(path),
+        contains(id == 'codex' ? "'--event'" : r'\"--event\"'),
+        reason: 'updating another field preserves the command: $id',
+      );
+      handler['timeout'] = 10;
+      handler['command'] = (handler['command'] as String).replaceAll(
+        'Stop',
+        'Other',
+      );
+      write(path, jsonEncode(data));
+      expect(states(status(i, id))['hooks'], 'outdated', reason: id);
+      expect(i.apply(<String>[id]).single.changes, isNotEmpty, reason: id);
+      expect(states(status(i, id))['hooks'], 'current', reason: id);
+    }
+  });
+
+  test('Codex TOML keeps equivalent commands and updates different ones', () {
+    write(
+      '.codex/config.toml',
+      '[[hooks.Stop]]\n\n'
+          '[[hooks.Stop.hooks]]\ntype = "command"\n'
+          'command = "other --stop"\n',
+    );
+    final AgentInstaller i = installer();
+    i.apply(<String>['codex']);
+    final String original = read('.codex/config.toml')!.replaceAll(
+      '--notify-stop --source Codex',
+      "'--notify-stop' '--source' 'Codex'",
+    );
+    write('.codex/config.toml', original);
+    expect(states(status(i, 'codex'))['hooks'], 'current');
+    expect(i.plan(<String>['codex']).single.changes, isEmpty);
+    expect(i.apply(<String>['codex']).single.changes, isEmpty);
+    expect(read('.codex/config.toml'), original);
+    write(
+      '.codex/config.toml',
+      original.replaceFirst('timeout = 10', 'timeout = 11'),
+    );
+    i.apply(<String>['codex']);
+    expect(
+      read('.codex/config.toml'),
+      contains("'--notify-stop' '--source' 'Codex'"),
+    );
+    write('.codex/config.toml', original.replaceAll("'Codex'", "'Other'"));
+    expect(states(status(i, 'codex'))['hooks'], 'outdated');
+    i.apply(<String>['codex']);
+    expect(states(status(i, 'codex'))['hooks'], 'current');
+  });
+
+  test('equivalent instruction line endings do not cause a rewrite', () {
+    final ProductManifest product = ProductManifest.fromJson(<String, Object?>{
+      'schemaVersion': 1,
+      'product': 'acme',
+      'name': 'Acme',
+      'version': '1',
+      'instructions': <String, Object?>{'markdown': 'first\r\nsecond'},
+    });
+    final AgentInstaller i = installer(product: product);
+    write('.codex/AGENTS.md', '# Notes\n');
+    i.apply(<String>['codex']);
+    final String lf = read('.codex/AGENTS.md')!;
+    expect(lf, isNot(contains('\r')));
+    final String mixed = lf.replaceAll('first\nsecond', 'first\r\nsecond');
+    write('.codex/AGENTS.md', mixed);
+    expect(states(status(i, 'codex'))['instructions'], 'current');
+    expect(i.plan(<String>['codex']).single.changes, isEmpty);
+    expect(i.apply(<String>['codex']).single.changes, isEmpty);
+    expect(read('.codex/AGENTS.md'), mixed);
+  });
+
   test('an empty file the product never touched survives removal', () {
     const String toml =
         '[[hooks.Stop]]\n\n[[hooks.Stop.hooks]]\ntype = "command"\ncommand = "other --stop"\n';
@@ -786,19 +905,23 @@ void main() {
     expect(states(status(i, 'claude-code'))['skills'], 'current');
   });
 
-  test('a symlinked config stays a link', () {
-    write('dotfiles/mcp.json', '{}');
-    Directory('${home.path}/.cursor').createSync();
-    Link(
-      '${home.path}/.cursor/mcp.json',
-    ).createSync('${home.path}/dotfiles/mcp.json');
-    installer().apply(<String>['cursor']);
-    expect(
-      FileSystemEntity.isLinkSync('${home.path}/.cursor/mcp.json'),
-      isTrue,
-    );
-    expect(read('dotfiles/mcp.json'), contains('acme'));
-  }, skip: Platform.isWindows ? 'POSIX links only.' : false);
+  test(
+    'a symlinked config stays a link',
+    () {
+      write('dotfiles/mcp.json', '{}');
+      Directory('${home.path}/.cursor').createSync();
+      Link(
+        '${home.path}/.cursor/mcp.json',
+      ).createSync('${home.path}/dotfiles/mcp.json');
+      installer().apply(<String>['cursor']);
+      expect(
+        FileSystemEntity.isLinkSync('${home.path}/.cursor/mcp.json'),
+        isTrue,
+      );
+      expect(read('dotfiles/mcp.json'), contains('acme'));
+    },
+    skip: Platform.isWindows ? 'POSIX links only.' : false,
+  );
 
   test('an extension file adds or customizes install targets', () {
     write(

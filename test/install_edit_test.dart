@@ -238,6 +238,28 @@ trusted_hash = "h"
     const String begin = '<!-- BEGIN X -->';
     const String end = '<!-- END X -->';
 
+    test('uses the file line endings and compares blocks across styles', () {
+      const String body = 'first\r\nsecond';
+      expect(
+        MarkdownBlock.set('# Notes\n', begin, end, body),
+        '# Notes\n\n$begin\nfirst\nsecond\n$end\n',
+      );
+      expect(
+        MarkdownBlock.set('# Notes\r\n', begin, end, body),
+        '# Notes\r\n\r\n$begin\r\nfirst\r\nsecond\r\n$end\r\n',
+      );
+      final String mixed = '# Notes\n\n$begin\r\nfirst\r\nsecond\r\n$end\n';
+      expect(MarkdownBlock.set(mixed, begin, end, 'first\nsecond'), mixed);
+      expect(
+        MarkdownBlock.set(mixed, begin, end, 'changed\r\ntext'),
+        '# Notes\n\n$begin\nchanged\ntext\n$end\n',
+      );
+      expect(
+        MarkdownBlock.set(null, begin, end, body),
+        '$begin\nfirst\nsecond\n$end\n',
+      );
+    });
+
     test('appends, replaces in place and removes cleanly', () {
       const String original = '# Notes\n\nKeep this.\n';
       final String added = MarkdownBlock.set(original, begin, end, 'v1');
