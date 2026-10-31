@@ -1,6 +1,6 @@
 name: agent_installer
 description: Detects local AI agent clients and installs a product's integration into the ones a person selects.
-version: 0.2.0
+version: 0.2.1
 repository: https://github.com/JevonsCode/agent-installer
 publish_to: none
 environment:
