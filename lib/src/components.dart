@@ -270,10 +270,16 @@ TextPart _mcpPart(String file, String format, McpSpec mcp) {
     (t) {
       final Object? existing = current(t);
       // Keep fields the person added, minus transport fields that conflict.
+      // `"type": "stdio"` names the transport a command entry already uses
+      // (the generic snippet many products hand out), so it stays.
       final Map<String, Object?> desired = <String, Object?>{
         if (existing is Map<String, Object?>)
           for (final MapEntry<String, Object?> e in existing.entries)
-            if (!_transportKeys.contains(e.key)) e.key: e.value,
+            if (!_transportKeys.contains(e.key) ||
+                (e.key == 'type' &&
+                    e.value == 'stdio' &&
+                    format != 'opencode-json'))
+              e.key: e.value,
         ...ours(existing),
       };
       return deepEquals(existing, desired) ? t : JsonEdit.set(t, key, desired);
