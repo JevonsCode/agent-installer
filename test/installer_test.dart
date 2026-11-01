@@ -382,6 +382,26 @@ void main() {
     expect(states(status(i, 'codex'))['hooks'], 'current');
   });
 
+  test('blank lines at the end of a file are no change', () {
+    write(
+      '.codex/config.toml',
+      '[[hooks.Stop]]\n\n'
+          '[[hooks.Stop.hooks]]\ntype = "command"\n'
+          'command = "other --stop"\n',
+    );
+    final AgentInstaller i = installer();
+    i.apply(<String>['codex']);
+    // A client or an editor leaves blank lines after the last table.
+    final String padded = '${read('.codex/config.toml')!}\n\n';
+    write('.codex/config.toml', padded);
+    expect(status(i, 'codex').state, 'connected');
+    expect(states(status(i, 'codex'))['mcp'], 'current');
+    expect(states(status(i, 'codex'))['hooks'], 'current');
+    expect(i.plan(<String>['codex']).single.changes, isEmpty);
+    expect(i.apply(<String>['codex']).single.changes, isEmpty);
+    expect(read('.codex/config.toml'), padded);
+  });
+
   test('equivalent instruction line endings do not cause a rewrite', () {
     final ProductManifest product = ProductManifest.fromJson(<String, Object?>{
       'schemaVersion': 1,

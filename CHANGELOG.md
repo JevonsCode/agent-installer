@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 (2026-11-01)
+
+### Fixed
+
+- Blank lines or spaces at the end of a file are no change: `status` reads
+  such a file as current, and `plan` and `apply` leave it alone. A Codex
+  `config.toml` that ended with a blank line after the product's tables read
+  as `outdated` for MCP and hooks forever, because every write ends the file
+  with exactly one newline.
+
 ## 0.3.0 (2026-11-01)
 
 ### Added
