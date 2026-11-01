@@ -51,17 +51,31 @@ final class TargetScan {
 
 /// One component's state in one client.
 final class ComponentStatus {
-  const ComponentStatus(this.component, this.state, [this.message]);
+  const ComponentStatus(
+    this.component,
+    this.state, [
+    this.message,
+    this.paths = const <String>[],
+  ]);
   final String component;
 
   /// `current`, `outdated`, `missing`, `conflict` or `unsupported`.
   final String state;
   final String? message;
 
+  /// Where the component lives in this client, shown relative to the home
+  /// directory (`~/.acme/mcp.json`), so a person can make the change by
+  /// hand. Empty when the client has no file or directory for it.
+  final List<String> paths;
+
+  ComponentStatus _at(List<String> paths) =>
+      ComponentStatus(component, state, message, paths);
+
   Map<String, Object?> toJson() => <String, Object?>{
     'component': component,
     'state': state,
     'message': ?message,
+    if (paths.isNotEmpty) 'paths': paths,
   };
 }
 
@@ -264,7 +278,15 @@ final class AgentInstaller {
         : active.every((s) => s == 'missing')
         ? 'not_connected'
         : 'update_available';
-    return ClientStatus(scan, state, states);
+    List<String> pathsOf(String component) => <String>{
+      for (final TextPart p in work.text)
+        if (p.component == component) env.display(p.path),
+      for (final DirectoryPart d in work.directories)
+        if (d.component == component) env.display(d.target),
+    }.toList();
+    return ClientStatus(scan, state, <ComponentStatus>[
+      for (final ComponentStatus s in states) s._at(pathsOf(s.component)),
+    ]);
   }
 
   ComponentStatus _textState(String component, Iterable<TextPart> parts) {
@@ -282,6 +304,9 @@ final class AgentInstaller {
       );
     } on FormatException catch (error) {
       return ComponentStatus(component, 'conflict', error.message);
+    } on FileSystemException {
+      // One unreadable file says nothing about the other clients.
+      return ComponentStatus(component, 'conflict', 'It cannot be read.');
     }
   }
 

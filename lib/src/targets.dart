@@ -163,6 +163,27 @@ const Map<String, Map<String, Object?>> builtinInstallTargets =
           'format': 'mcp-servers-json',
         },
       },
+      // Google Antigravity: the desktop app and its `agy` CLI read one MCP
+      // file beside their own state folders; no hooks are known.
+      'antigravity': <String, Object?>{
+        'name': 'Antigravity',
+        'detect': <Object?>[
+          <String, Object?>{'command': 'agy'},
+          <String, Object?>{'path': '~/.gemini/config/mcp_config.json'},
+          <String, Object?>{'path': '~/.gemini/antigravity'},
+          <String, Object?>{'path': '~/.gemini/antigravity-cli'},
+        ],
+        'mcp': <String, Object?>{
+          'file': '~/.gemini/config/mcp_config.json',
+          'format': 'mcp-servers-json',
+        },
+        'afterInstall': <Object?>[
+          <String, Object?>{
+            'code': 'restart_client',
+            'message': 'Restart Antigravity to load the change.',
+          },
+        ],
+      },
       'opencode': <String, Object?>{
         'name': 'OpenCode',
         'detect': <Object?>[

@@ -567,10 +567,76 @@ void main() {
     expect(status(mac, 'claude-desktop').state, 'connected');
   });
 
+  test('Antigravity is detected and gets its MCP entry', () {
+    expect(status(installer(), 'antigravity').scan.detected, isFalse);
+    Directory('${home.path}/.gemini/antigravity').createSync(recursive: true);
+    final AgentInstaller i = installer();
+    expect(status(i, 'antigravity').scan.evidence, <String>[
+      '~/.gemini/antigravity',
+    ]);
+    expect(status(i, 'antigravity').state, 'not_connected');
+    expect(
+      status(
+        i,
+        'antigravity',
+      ).components.firstWhere((c) => c.component == 'mcp').paths,
+      <String>['~/.gemini/config/mcp_config.json'],
+    );
+    final ClientResult applied = i.apply(<String>['antigravity']).single;
+    expect(applied.actionCodes, <String>['restart_client']);
+    expect(
+      (json('.gemini/config/mcp_config.json')['mcpServers']! as Map)['acme'],
+      <String, Object?>{
+        'command': '/opt/acme/bin/acme_mcp',
+        'args': <String>['--source', 'Antigravity'],
+      },
+    );
+    expect(status(i, 'antigravity').state, 'connected');
+    expect(
+      status(i, 'gemini-cli').scan.detected,
+      isFalse,
+      reason: 'Antigravity alone does not mean Gemini CLI',
+    );
+  });
+
+  test('an unreadable file is a conflict in its own client only', () {
+    write('.cursor/mcp.json', '{"mcpServers":{}}');
+    Process.runSync('chmod', <String>['000', '${home.path}/.cursor/mcp.json']);
+    final AgentInstaller i = installer();
+    final ClientStatus cursor = status(i, 'cursor');
+    expect(states(cursor)['mcp'], 'conflict');
+    expect(
+      cursor.components.firstWhere((c) => c.component == 'mcp').message,
+      'It cannot be read.',
+    );
+    expect(status(i, 'codex').state, 'not_connected');
+    Process.runSync('chmod', <String>['600', '${home.path}/.cursor/mcp.json']);
+  }, skip: Platform.isWindows ? 'POSIX permissions only' : false);
+
+  test('a command entry keeps "type": "stdio" and is current', () {
+    const String entry =
+        '{"mcpServers":{"acme":{"type":"stdio","command":"/opt/acme/bin/acme_mcp","args":["--source","Cursor"]}}}\n';
+    write('.cursor/mcp.json', entry);
+    final AgentInstaller i = installer();
+    expect(states(status(i, 'cursor'))['mcp'], 'current');
+    expect(
+      status(i, 'cursor').toJson()['componentStates'],
+      contains(
+        equals(<String, Object?>{
+          'component': 'mcp',
+          'state': 'current',
+          'paths': <String>['~/.cursor/mcp.json'],
+        }),
+      ),
+    );
+    i.apply(<String>['cursor']);
+    expect(read('.cursor/mcp.json'), entry);
+  });
+
   test('existing entries keep added fields and drop transport fields', () {
     write(
       '.cursor/mcp.json',
-      '{"mcpServers":{"acme":{"url":"http://localhost/acme_mcp","timeout":5}}}',
+      '{"mcpServers":{"acme":{"type":"sse","url":"http://localhost/acme_mcp","timeout":5}}}',
     );
     installer().apply(<String>['cursor']);
     expect(

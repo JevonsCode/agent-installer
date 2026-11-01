@@ -133,7 +133,8 @@ installer.apply(['claude-code']);             // 用户确认后
 | `unsupported` | 当前系统没有这个客户端，或它不接受该产品的任何组件 |
 
 每个组件为 `current`、`outdated`、`missing`、`conflict` 或 `unsupported`（产品要装、
-客户端不支持）。`detected` 与 `evidence` 只说明找到了什么，不影响能否安装：用户可以
+客户端不支持）。组件还会列出 `paths`，即它在这个客户端里的位置（`~/.acme/mcp.json`），
+宿主可以据此告诉用户去哪里手动修改。`detected` 与 `evidence` 只说明找到了什么，不影响能否安装：用户可以
 给还没运行过的客户端预先安装。
 
 `plan`、`apply`、`remove` 之后，每个客户端还会列出 `actions`（用户还需要做的事，
@@ -159,6 +160,7 @@ installer.apply(['claude-code']);             // 用户确认后
 | `cursor` | `~/.cursor/mcp.json` | `~/.cursor/hooks.json` | | `~/.cursor/skills` | |
 | `opencode` | `opencode.jsonc` 或 `opencode.json` | | | `skills` | `plugins/<产品>` |
 | `claude-desktop` | `claude_desktop_config.json`（macOS、Windows） | | | | |
+| `antigravity` | `~/.gemini/config/mcp_config.json` | | | | |
 | `gemini-cli`、`kiro`、`qwen-code` | 各自的 `settings.json` / `mcp.json` | | | | |
 
 Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件，第一期没有内置；
@@ -195,7 +197,8 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
 - **占位符**：`{name}` 只做替换、从不求值，值由宿主用 `--var` 或 `variables` 传入；
   另有 `{clientId}`、`{clientName}`。`${…}` 原样保留给客户端展开。未知占位符会报错。
 - **MCP**：`extra` 写入额外字段，例如 Codex 的 `startup_timeout_sec`。已有条目中用户
-  添加的字段会保留，`url`、`headers`、`type` 等传输字段会被替换。
+  添加的字段会保留，`url`、`headers`、`type` 等传输字段会被替换（命令型条目保留
+  `"type": "stdio"`，它说的正是自身的传输方式）。
   同名条目只有在命令、参数或 URL 中含有 `markers` 里的某段文字时才算本产品的；
   否则报冲突，安装和卸载都不会动它。`markers` 默认沿用 Hook 的标记，没有 Hook 时用
   命令本身。条目里不写额外的标识字段，因为部分客户端重写配置时会丢掉不认识的字段。

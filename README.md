@@ -161,7 +161,9 @@ Each client's `state`:
 
 Each component is `current`, `outdated`, `missing`, `conflict`, or
 `unsupported` (the product wants to install it, but the client doesn't
-support it). `detected` and `evidence` only state what was found; they don't
+support it). A component also lists `paths`, where it lives in this client
+(`~/.acme/mcp.json`), so a host can tell a person where to make the change by
+hand. `detected` and `evidence` only state what was found; they don't
 affect whether installation is possible: a user can pre-install for a client
 that has never been run.
 
@@ -188,6 +190,7 @@ The full output is described in [result.schema.json](docs/result.schema.json).
 | `cursor` | `~/.cursor/mcp.json` | `~/.cursor/hooks.json` | | `~/.cursor/skills` | |
 | `opencode` | `opencode.jsonc` or `opencode.json` | | | `skills` | `plugins/<product>` |
 | `claude-desktop` | `claude_desktop_config.json` (macOS, Windows) | | | | |
+| `antigravity` | `~/.gemini/config/mcp_config.json` | | | | |
 | `gemini-cli`, `kiro`, `qwen-code` | each client's own `settings.json` / `mcp.json` | | | | |
 
 Hooks for Gemini CLI and Kiro, and deciding whether to install the OpenCode
@@ -229,7 +232,8 @@ verified.
   expand. An unknown placeholder is an error.
 - **MCP**: `extra` writes additional fields, e.g. Codex's
   `startup_timeout_sec`. Fields a user added to an existing entry are kept;
-  transport fields such as `url`, `headers`, `type` are replaced. An entry
+  transport fields such as `url`, `headers`, `type` are replaced (a
+  command entry keeps `"type": "stdio"`, which names its own transport). An entry
   with the same name is only treated as belonging to this product if its
   command, args, or URL contain one of the strings in `markers`; otherwise it
   is reported as a conflict, and neither install nor remove touches it.

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 (2026-11-01)
+
+### Added
+
+- Built-in `antigravity` client (Google Antigravity and its `agy` CLI): MCP
+  in `~/.gemini/config/mcp_config.json`, detected by `agy` on PATH, that file,
+  `~/.gemini/antigravity` or `~/.gemini/antigravity-cli`.
+- `status` lists each component's `paths` (relative to home), so a host can
+  show where to make a change by hand, for built-in and extension clients.
+
+### Changed
+
+- A command MCP entry that carries `"type": "stdio"` (the generic snippet
+  many products hand out) keeps it and reads as current instead of outdated.
+
 ## 0.2.1 (2026-11-01)
 
 ### Changed
