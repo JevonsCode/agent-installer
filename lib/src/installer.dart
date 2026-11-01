@@ -296,7 +296,7 @@ final class AgentInstaller {
       for (final TextPart p in parts) {
         final String? text = _read(p.path);
         present = present || p.present(text);
-        current = current && p.install(text) == text;
+        current = current && _sameText(p.install(text), text);
       }
       return ComponentStatus(
         component,
@@ -401,8 +401,10 @@ final class AgentInstaller {
       for (final TextPart p in parts) {
         try {
           final String? next = install ? p.install(after) : p.uninstall(after);
-          if (next != after) touched.add(p.component);
-          after = next;
+          if (!_sameText(next, after)) {
+            touched.add(p.component);
+            after = next;
+          }
         } on FormatException catch (error) {
           problems.add(
             '${p.component}: ${env.display(path)}: ${error.message}',
@@ -949,3 +951,8 @@ bool _resolvable(InstallTarget target, InstallEnvironment env) {
     return false;
   }
 }
+
+/// Whether two versions of a file say the same: blank lines or spaces at its
+/// end, which editors and clients add and drop freely, are no change.
+bool _sameText(String? a, String? b) =>
+    a == b || (a != null && b != null && a.trimRight() == b.trimRight());
