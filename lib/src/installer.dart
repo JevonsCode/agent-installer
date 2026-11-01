@@ -304,6 +304,9 @@ final class AgentInstaller {
       );
     } on FormatException catch (error) {
       return ComponentStatus(component, 'conflict', error.message);
+    } on FileSystemException {
+      // One unreadable file says nothing about the other clients.
+      return ComponentStatus(component, 'conflict', 'It cannot be read.');
     }
   }
 
