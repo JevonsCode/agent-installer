@@ -619,29 +619,19 @@ void main() {
     );
   });
 
-  test(
-    'an unreadable file is a conflict in its own client only',
-    () {
-      write('.cursor/mcp.json', '{"mcpServers":{}}');
-      Process.runSync('chmod', <String>[
-        '000',
-        '${home.path}/.cursor/mcp.json',
-      ]);
-      final AgentInstaller i = installer();
-      final ClientStatus cursor = status(i, 'cursor');
-      expect(states(cursor)['mcp'], 'conflict');
-      expect(
-        cursor.components.firstWhere((c) => c.component == 'mcp').message,
-        'It cannot be read.',
-      );
-      expect(status(i, 'codex').state, 'not_connected');
-      Process.runSync('chmod', <String>[
-        '600',
-        '${home.path}/.cursor/mcp.json',
-      ]);
-    },
-    skip: Platform.isWindows ? 'POSIX permissions only' : false,
-  );
+  test('an unreadable file is a conflict in its own client only', () {
+    write('.cursor/mcp.json', '{"mcpServers":{}}');
+    Process.runSync('chmod', <String>['000', '${home.path}/.cursor/mcp.json']);
+    final AgentInstaller i = installer();
+    final ClientStatus cursor = status(i, 'cursor');
+    expect(states(cursor)['mcp'], 'conflict');
+    expect(
+      cursor.components.firstWhere((c) => c.component == 'mcp').message,
+      'It cannot be read.',
+    );
+    expect(status(i, 'codex').state, 'not_connected');
+    Process.runSync('chmod', <String>['600', '${home.path}/.cursor/mcp.json']);
+  }, skip: Platform.isWindows ? 'POSIX permissions only' : false);
 
   test('a command entry keeps "type": "stdio" and is current', () {
     const String entry =
@@ -1013,23 +1003,19 @@ void main() {
     expect(states(status(i, 'claude-code'))['skills'], 'current');
   });
 
-  test(
-    'a symlinked config stays a link',
-    () {
-      write('dotfiles/mcp.json', '{}');
-      Directory('${home.path}/.cursor').createSync();
-      Link(
-        '${home.path}/.cursor/mcp.json',
-      ).createSync('${home.path}/dotfiles/mcp.json');
-      installer().apply(<String>['cursor']);
-      expect(
-        FileSystemEntity.isLinkSync('${home.path}/.cursor/mcp.json'),
-        isTrue,
-      );
-      expect(read('dotfiles/mcp.json'), contains('acme'));
-    },
-    skip: Platform.isWindows ? 'POSIX links only.' : false,
-  );
+  test('a symlinked config stays a link', () {
+    write('dotfiles/mcp.json', '{}');
+    Directory('${home.path}/.cursor').createSync();
+    Link(
+      '${home.path}/.cursor/mcp.json',
+    ).createSync('${home.path}/dotfiles/mcp.json');
+    installer().apply(<String>['cursor']);
+    expect(
+      FileSystemEntity.isLinkSync('${home.path}/.cursor/mcp.json'),
+      isTrue,
+    );
+    expect(read('dotfiles/mcp.json'), contains('acme'));
+  }, skip: Platform.isWindows ? 'POSIX links only.' : false);
 
   test('an extension file adds or customizes install targets', () {
     write(
