@@ -1328,18 +1328,43 @@ void main() {
       },
     );
 
-    test('a person\'s prompt of the same name is a conflict and stays', () {
+    test(
+      'a person\'s prompt of the same name is skipped alone; the rest is written',
+      () {
+        write('.codex/config.toml', '');
+        write('.codex/prompts/fla-a.md', 'mine\n');
+        final AgentInstaller i = installer(
+          product: withPrompts(<Map<String, Object?>>[
+            <String, Object?>{'name': 'fla-a', 'body': '#FLA a'},
+            <String, Object?>{'name': 'fla-b', 'body': '#FLA b'},
+          ]),
+        );
+        final ClientResult applied = i.apply(<String>['codex']).single;
+        expect(applied.problems, isEmpty);
+        expect(read('.codex/prompts/fla-a.md'), 'mine\n');
+        expect(read('.codex/prompts/fla-b.md'), contains('#FLA b'));
+        expect(states(status(i, 'codex'))['prompts'], 'current');
+        expect(status(i, 'codex').state, 'connected');
+        i.remove(<String>['codex']);
+        expect(read('.codex/prompts/fla-a.md'), 'mine\n');
+        expect(read('.codex/prompts/fla-b.md'), isNull);
+      },
+    );
+
+    test('a person\'s prompt differing only in case is never touched', () {
       write('.codex/config.toml', '');
-      write('.codex/prompts/fla-a.md', 'mine\n');
-      final AgentInstaller i = installer(
+      write('.codex/prompts/FLA-A.md', 'mine\n');
+      installer(
         product: withPrompts(<Map<String, Object?>>[
           <String, Object?>{'name': 'fla-a', 'body': '#FLA a'},
         ]),
-      );
-      final ClientResult applied = i.apply(<String>['codex']).single;
-      expect(applied.problems.single, contains('not the product\'s'));
-      expect(read('.codex/prompts/fla-a.md'), 'mine\n');
-      expect(states(status(i, 'codex'))['prompts'], 'conflict');
+      ).apply(<String>['codex']);
+      // One file on a case-insensitive disk (kept as the person's), two elsewhere.
+      expect(read('.codex/prompts/FLA-A.md'), 'mine\n');
+      installer(
+        product: withPrompts(const <Map<String, Object?>>[]),
+      ).apply(<String>['codex']);
+      expect(read('.codex/prompts/FLA-A.md'), 'mine\n');
     });
 
     test('remove deletes only the product\'s prompts', () {

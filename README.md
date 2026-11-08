@@ -263,8 +263,9 @@ verified.
   (up to 256) become `<name>.md` files in the client's prompts directory, each
   starting with a front matter that holds the description and
   `installed-by: <product>`. The text is written as given, without
-  placeholders. A same-named file without that line is the person's and is
-  never overwritten. A file the product wrote earlier and no longer lists is
+  placeholders. A same-named file without that line (on a case-insensitive
+  disk, also one differing only in case) is the person's: that prompt is
+  skipped and the file kept, and the other prompts are written as usual. A file the product wrote earlier and no longer lists is
   removed on apply; a manifest without `prompts` leaves them as they are,
   and `remove` always deletes every file of the product's there. Codex lists them in
   its / menu as `prompts:<name>`.

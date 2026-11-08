@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.1 (2026-11-08)
+
+### Changed
+
+- A person's prompt file with the name of one of the product's prompts (on
+  a case-insensitive disk, also one differing only in case) no longer makes
+  the whole `prompts` component a conflict: that one prompt is skipped and
+  the file kept, and the others are written. A roster of names can meet a
+  person's own prompt; one clash must not stop the client's status,
+  install or repair.
+
 ## 0.4.0 (2026-11-08)
 
 ### Added
