@@ -156,7 +156,7 @@ installer.apply(['claude-code']);             // 用户确认后
 | ID | MCP | Hook | 说明文件 | Skills | 其他 |
 | --- | --- | --- | --- | --- | --- |
 | `claude-code` | `~/.claude.json` | `~/.claude/settings.json` | `~/.claude/CLAUDE.md` | `~/.claude/skills` | 权限白名单 |
-| `codex` | `{CODEX_HOME}/config.toml` | `hooks.json`，或 `config.toml` 中已有 Hook 表时写在那里 | `AGENTS.md`（`AGENTS.override.md` 有内容时写它） | `~/.agents/skills` | |
+| `codex` | `{CODEX_HOME}/config.toml` | `hooks.json`，或 `config.toml` 中已有 Hook 表时写在那里 | `AGENTS.md`（`AGENTS.override.md` 有内容时写它） | `~/.agents/skills` | prompts 在 `{CODEX_HOME}/prompts` |
 | `cursor` | `~/.cursor/mcp.json` | `~/.cursor/hooks.json` | | `~/.cursor/skills` | |
 | `opencode` | `opencode.jsonc` 或 `opencode.json` | | | `skills` | `plugins/<产品>` |
 | `claude-desktop` | `claude_desktop_config.json`（macOS、Windows） | | | | |
@@ -215,6 +215,12 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
   接管。
 - **说明**：默认标记为 `<!-- BEGIN <PRODUCT> MANAGED INSTRUCTIONS -->`，可用
   `begin`、`end` 沿用产品已有的标记。
+- **Prompts**：`"prompts": [{ "name": "fla-jamie-ash", "description": "Jamie Ash — Beta — 工程", "body": "#FLA Jamie Ash" }]`
+  （最多 256 个）写成客户端 prompts 目录里的 `<name>.md`，开头的 front matter 写
+  description 和 `installed-by: <产品>`。正文原样写入，不替换占位符。没有这一行的同名
+  文件属于用户，永远不覆盖。本产品以前写过、现在不再列出的文件在 apply 时删除（清单里
+  不再有 `prompts` 也一样），`remove` 删除本产品在那里的全部文件。Codex 在 / 菜单里
+  以 `prompts:<name>` 列出它们。
 - **Skills / 插件**：整目录复制，目标目录内写回执 `.agent-installer.json`。不覆盖不属于
   本产品的同名目录；用户改过的目录会被保留并报告。没有回执、但文件与产品完全一致的
   目录会被接管（只写回执，变更类型为 `adopt`）；清单写了

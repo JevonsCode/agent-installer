@@ -3,7 +3,7 @@
 English | [简体中文](README.zh.md)
 
 Detects the AI agent clients on this machine and installs a product's
-integration (MCP server, hooks, instructions, skills, permissions) into the
+integration (MCP server, hooks, instructions, skills, permissions, prompts) into the
 clients a person selects, with a dry-run preview, status and removal.
 
 A product (the host) describes what to install; the installer writes it
@@ -186,7 +186,7 @@ The full output is described in [result.schema.json](docs/result.schema.json).
 | ID | MCP | Hook | Instructions | Skills | Other |
 | --- | --- | --- | --- | --- | --- |
 | `claude-code` | `~/.claude.json` | `~/.claude/settings.json` | `~/.claude/CLAUDE.md` | `~/.claude/skills` | permission allowlist |
-| `codex` | `{CODEX_HOME}/config.toml` | `hooks.json`, or written into the existing hook table in `config.toml` if there is one | `AGENTS.md` (`AGENTS.override.md` if it has content) | `~/.agents/skills` | |
+| `codex` | `{CODEX_HOME}/config.toml` | `hooks.json`, or written into the existing hook table in `config.toml` if there is one | `AGENTS.md` (`AGENTS.override.md` if it has content) | `~/.agents/skills` | prompts in `{CODEX_HOME}/prompts` |
 | `cursor` | `~/.cursor/mcp.json` | `~/.cursor/hooks.json` | | `~/.cursor/skills` | |
 | `opencode` | `opencode.jsonc` or `opencode.json` | | | `skills` | `plugins/<product>` |
 | `claude-desktop` | `claude_desktop_config.json` (macOS, Windows) | | | | |
@@ -259,6 +259,15 @@ verified.
 - **Instructions**: the default marker is
   `<!-- BEGIN <PRODUCT> MANAGED INSTRUCTIONS -->`; `begin` and `end` can be
   set to reuse a product's existing markers.
+- **Prompts**: `"prompts": [{ "name": "fla-jamie-ash", "description": "Jamie Ash — Beta — Engineering", "body": "#FLA Jamie Ash" }]`
+  (up to 256) become `<name>.md` files in the client's prompts directory, each
+  starting with a front matter that holds the description and
+  `installed-by: <product>`. The text is written as given, without
+  placeholders. A same-named file without that line is the person's and is
+  never overwritten. A file the product wrote earlier and no longer lists is
+  removed on apply (also when the manifest no longer has `prompts`), and
+  `remove` deletes every file of the product's there. Codex lists them in
+  its / menu as `prompts:<name>`.
 - **Skills / plugins**: the whole directory is copied, and a receipt file
   `.agent-installer.json` is written into the target directory. A
   same-named directory that doesn't belong to this product is never

@@ -619,19 +619,29 @@ void main() {
     );
   });
 
-  test('an unreadable file is a conflict in its own client only', () {
-    write('.cursor/mcp.json', '{"mcpServers":{}}');
-    Process.runSync('chmod', <String>['000', '${home.path}/.cursor/mcp.json']);
-    final AgentInstaller i = installer();
-    final ClientStatus cursor = status(i, 'cursor');
-    expect(states(cursor)['mcp'], 'conflict');
-    expect(
-      cursor.components.firstWhere((c) => c.component == 'mcp').message,
-      'It cannot be read.',
-    );
-    expect(status(i, 'codex').state, 'not_connected');
-    Process.runSync('chmod', <String>['600', '${home.path}/.cursor/mcp.json']);
-  }, skip: Platform.isWindows ? 'POSIX permissions only' : false);
+  test(
+    'an unreadable file is a conflict in its own client only',
+    () {
+      write('.cursor/mcp.json', '{"mcpServers":{}}');
+      Process.runSync('chmod', <String>[
+        '000',
+        '${home.path}/.cursor/mcp.json',
+      ]);
+      final AgentInstaller i = installer();
+      final ClientStatus cursor = status(i, 'cursor');
+      expect(states(cursor)['mcp'], 'conflict');
+      expect(
+        cursor.components.firstWhere((c) => c.component == 'mcp').message,
+        'It cannot be read.',
+      );
+      expect(status(i, 'codex').state, 'not_connected');
+      Process.runSync('chmod', <String>[
+        '600',
+        '${home.path}/.cursor/mcp.json',
+      ]);
+    },
+    skip: Platform.isWindows ? 'POSIX permissions only' : false,
+  );
 
   test('a command entry keeps "type": "stdio" and is current', () {
     const String entry =
@@ -1003,19 +1013,23 @@ void main() {
     expect(states(status(i, 'claude-code'))['skills'], 'current');
   });
 
-  test('a symlinked config stays a link', () {
-    write('dotfiles/mcp.json', '{}');
-    Directory('${home.path}/.cursor').createSync();
-    Link(
-      '${home.path}/.cursor/mcp.json',
-    ).createSync('${home.path}/dotfiles/mcp.json');
-    installer().apply(<String>['cursor']);
-    expect(
-      FileSystemEntity.isLinkSync('${home.path}/.cursor/mcp.json'),
-      isTrue,
-    );
-    expect(read('dotfiles/mcp.json'), contains('acme'));
-  }, skip: Platform.isWindows ? 'POSIX links only.' : false);
+  test(
+    'a symlinked config stays a link',
+    () {
+      write('dotfiles/mcp.json', '{}');
+      Directory('${home.path}/.cursor').createSync();
+      Link(
+        '${home.path}/.cursor/mcp.json',
+      ).createSync('${home.path}/dotfiles/mcp.json');
+      installer().apply(<String>['cursor']);
+      expect(
+        FileSystemEntity.isLinkSync('${home.path}/.cursor/mcp.json'),
+        isTrue,
+      );
+      expect(read('dotfiles/mcp.json'), contains('acme'));
+    },
+    skip: Platform.isWindows ? 'POSIX links only.' : false,
+  );
 
   test('an extension file adds or customizes install targets', () {
     write(
@@ -1248,6 +1262,182 @@ void main() {
         '${home.path}/b/cursor',
       ).listSync().where((f) => f.path.contains('mcp.json.')),
       hasLength(5),
+    );
+  });
+
+  group('prompts', () {
+    ProductManifest withPrompts(List<Map<String, Object?>>? prompts) =>
+        acme(override: <String, Object?>{'prompts': prompts});
+
+    test('Codex gets each prompt as a file with its description and owner', () {
+      write('.codex/config.toml', '');
+      final AgentInstaller i = installer(
+        product: withPrompts(<Map<String, Object?>>[
+          <String, Object?>{
+            'name': 'fla-jamie-ash',
+            'description': 'Jamie Ash — Beta — Engineering',
+            'body': '#FLA Jamie Ash',
+          },
+          <String, Object?>{'name': 'fla-小林', 'body': '#FLA 小林'},
+        ]),
+      );
+      final ClientResult applied = i.apply(<String>['codex']).single;
+      expect(
+        applied.changes
+            .where((c) => c.components.contains('prompts'))
+            .map((c) => c.action),
+        <String>['create', 'create'],
+      );
+      expect(
+        read('.codex/prompts/fla-jamie-ash.md'),
+        '---\ndescription: Jamie Ash — Beta — Engineering\n'
+        'installed-by: acme\n---\n\n#FLA Jamie Ash\n',
+      );
+      expect(read('.codex/prompts/fla-小林.md'), contains('#FLA 小林'));
+      expect(states(status(i, 'codex'))['prompts'], 'current');
+      expect(i.apply(<String>['codex']).single.changes, isEmpty);
+    });
+
+    test(
+      'a prompt dropped from the list is removed; the person\'s files stay',
+      () {
+        write('.codex/config.toml', '');
+        write('.codex/prompts/mine.md', '# my own prompt\n');
+        write(
+          '.codex/prompts/other.md',
+          '---\ninstalled-by: another-product\n---\nhi\n',
+        );
+        Map<String, Object?> prompt(String name) => <String, Object?>{
+          'name': name,
+          'body': '#FLA $name',
+        };
+        installer(
+          product: withPrompts(<Map<String, Object?>>[
+            prompt('fla-a'),
+            prompt('fla-b'),
+          ]),
+        ).apply(<String>['codex']);
+        final AgentInstaller fewer = installer(
+          product: withPrompts(<Map<String, Object?>>[prompt('fla-a')]),
+        );
+        expect(states(status(fewer, 'codex'))['prompts'], 'outdated');
+        final ClientResult applied = fewer.apply(<String>['codex']).single;
+        expect(
+          applied.changes.singleWhere((c) => c.action == 'delete').path,
+          endsWith('fla-b.md'),
+        );
+        expect(read('.codex/prompts/fla-a.md'), isNotNull);
+        expect(read('.codex/prompts/fla-b.md'), isNull);
+        expect(read('.codex/prompts/mine.md'), '# my own prompt\n');
+        expect(read('.codex/prompts/other.md'), contains('another-product'));
+
+        // An empty list, or a manifest without prompts, removes the rest.
+        installer(
+          product: withPrompts(const <Map<String, Object?>>[]),
+        ).apply(<String>['codex']);
+        expect(read('.codex/prompts/fla-a.md'), isNull);
+        expect(read('.codex/prompts/mine.md'), '# my own prompt\n');
+      },
+    );
+
+    test('a person\'s prompt of the same name is a conflict and stays', () {
+      write('.codex/config.toml', '');
+      write('.codex/prompts/fla-a.md', 'mine\n');
+      final AgentInstaller i = installer(
+        product: withPrompts(<Map<String, Object?>>[
+          <String, Object?>{'name': 'fla-a', 'body': '#FLA a'},
+        ]),
+      );
+      final ClientResult applied = i.apply(<String>['codex']).single;
+      expect(applied.problems.single, contains('not the product\'s'));
+      expect(read('.codex/prompts/fla-a.md'), 'mine\n');
+      expect(states(status(i, 'codex'))['prompts'], 'conflict');
+    });
+
+    test('remove deletes only the product\'s prompts', () {
+      write('.codex/config.toml', '');
+      write('.codex/prompts/mine.md', 'mine\n');
+      final AgentInstaller i = installer(
+        product: withPrompts(<Map<String, Object?>>[
+          <String, Object?>{'name': 'fla-a', 'body': '#FLA a'},
+        ]),
+      );
+      i.apply(<String>['codex']);
+      // A file the product wrote under an earlier list goes too.
+      write('.codex/prompts/fla-old.md', '---\ninstalled-by: acme\n---\nold\n');
+      i.remove(<String>['codex']);
+      expect(read('.codex/prompts/fla-a.md'), isNull);
+      expect(read('.codex/prompts/fla-old.md'), isNull);
+      expect(read('.codex/prompts/mine.md'), 'mine\n');
+    });
+
+    test(
+      'a client without a prompts directory reports prompts unsupported',
+      () {
+        write('.claude.json', '{}');
+        final ClientStatus s = status(
+          installer(
+            product: withPrompts(<Map<String, Object?>>[
+              <String, Object?>{'name': 'fla-a', 'body': '#FLA a'},
+            ]),
+          ),
+          'claude-code',
+        );
+        expect(states(s)['prompts'], 'unsupported');
+        expect(
+          states(status(installer(product: withPrompts(null)), 'claude-code')),
+          isNot(contains('prompts')),
+        );
+      },
+    );
+
+    test(
+      'prompt names, descriptions and text are checked; text takes no placeholders',
+      () {
+        void bad(Object? prompts, String message) => expect(
+          () => withPrompts(prompts as List<Map<String, Object?>>?),
+          throwsA(
+            isA<AgentInstallException>().having(
+              (e) => e.message,
+              'message',
+              contains(message),
+            ),
+          ),
+        );
+        for (final String name in <String>[
+          '../x',
+          'a b',
+          '.hidden',
+          'a:b',
+          'a/b',
+        ]) {
+          bad(<Map<String, Object?>>[
+            <String, Object?>{'name': name, 'body': 'x'},
+          ], 'file name');
+        }
+        bad(<Map<String, Object?>>[
+          <String, Object?>{'name': 'a', 'body': 'x'},
+          <String, Object?>{'name': 'A', 'body': 'y'},
+        ], 'unique');
+        bad(<Map<String, Object?>>[
+          <String, Object?>{
+            'name': 'a',
+            'description': 'two\nlines',
+            'body': 'x',
+          },
+        ], 'single line');
+        bad(<Map<String, Object?>>[
+          for (int n = 0; n < 257; n++)
+            <String, Object?>{'name': 'p$n', 'body': 'x'},
+        ], 'at most 256');
+        write('.codex/config.toml', '');
+        installer(
+          product: withPrompts(<Map<String, Object?>>[
+            <String, Object?>{'name': 'fla-draft', 'body': '#FLA {draft}'},
+          ]),
+        ).apply(<String>['codex']);
+        expect(read('.codex/prompts/fla-draft.md'), contains('#FLA {draft}'));
+      },
     );
   });
 }

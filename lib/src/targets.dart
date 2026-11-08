@@ -91,6 +91,8 @@ const Map<String, Map<String, Object?>> builtinInstallTargets =
           'overrideFile': '{home}/AGENTS.override.md',
         },
         'skills': <String, Object?>{'dir': '~/.agents/skills'},
+        // The Codex app lists these in its / menu as prompts:<name>.
+        'prompts': <String, Object?>{'dir': '{home}/prompts'},
         'afterInstall': <Object?>[
           <String, Object?>{
             'code': 'new_session',
@@ -266,6 +268,7 @@ final class InstallTarget {
     this.instructionsOverrideFile,
     this.skillsDir,
     this.pluginsDir,
+    this.promptsDir,
     this.afterInstall = const <AfterInstallAction>[],
     this.extensionFile,
   });
@@ -292,6 +295,7 @@ final class InstallTarget {
       'instructions',
       'skills',
       'plugins',
+      'prompts',
       'afterInstall',
     }, path);
     List<String>? os;
@@ -421,6 +425,7 @@ final class InstallTarget {
       instructionsOverrideFile: instructionsOverride,
       skillsDir: dir('skills'),
       pluginsDir: dir('plugins'),
+      promptsDir: dir('prompts'),
       afterInstall: json.containsKey('afterInstall')
           ? _afterInstall(json['afterInstall'], '$path.afterInstall')
           : const <AfterInstallAction>[],
@@ -456,6 +461,9 @@ final class InstallTarget {
   final String? instructionsOverrideFile;
   final String? skillsDir;
   final String? pluginsDir;
+
+  /// Where the client reads prompt files (`<name>.md`).
+  final String? promptsDir;
   final List<AfterInstallAction> afterInstall;
 
   /// The user extension file that defines or customizes this target.
@@ -469,6 +477,7 @@ final class InstallTarget {
     if (instructionsFile != null) 'instructions',
     if (skillsDir != null) 'skills',
     if (pluginsDir != null) 'plugin',
+    if (promptsDir != null) 'prompts',
   ];
 
   /// The resolved `{home}` directory.

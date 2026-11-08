@@ -49,7 +49,8 @@ final class ClientWork {
 }
 
 /// Plans the parts for [product] in [target]; reads files only to choose
-/// between alternative locations.
+/// between alternative locations and to find the product's earlier prompt
+/// files.
 ClientWork buildWork(
   InstallTarget target,
   ResolvedProduct product,
@@ -178,7 +179,99 @@ ClientWork buildWork(
 
   directories('skills', target.skillsDir, product.skills);
   directories('plugin', target.pluginsDir, <DirectorySpec>[?product.plugin]);
+  _prompts(work, target, product, env, path);
   return work;
+}
+
+/// The product's prompt files, each `<name>.md` with a front matter that
+/// carries its description and the product's ownership line. A file of that
+/// name the product did not write is the person's and is never replaced.
+/// Files the product wrote earlier and no longer lists are removed, also
+/// when the manifest says nothing about prompts any more.
+void _prompts(
+  ClientWork work,
+  InstallTarget target,
+  ResolvedProduct product,
+  InstallEnvironment env,
+  String Function(String template) path,
+) {
+  final List<PromptSpec> prompts = product.prompts ?? const <PromptSpec>[];
+  final String? dir = target.promptsDir;
+  if (dir == null) {
+    if (prompts.isNotEmpty) work.unsupported.add('prompts');
+    return;
+  }
+  final String folder = path(dir);
+  bool ours(String? text) =>
+      text != null && promptOwner(text) == product.product;
+  String? drop(String? text) => ours(text) ? null : text;
+  final Set<String> listed = <String>{};
+  for (final PromptSpec prompt in prompts) {
+    final String file = '$folder${env.separator}${prompt.name}.md';
+    listed.add(prompt.name.toLowerCase());
+    final String content = promptFile(prompt, product.product);
+    work.text.add(
+      TextPart(
+        'prompts',
+        file,
+        (String? text) {
+          if (text != null && !ours(text)) {
+            throw const FormatException(
+              'a prompt of this name is not the product\'s; rename or remove it.',
+            );
+          }
+          return content;
+        },
+        drop,
+        ours,
+      ),
+    );
+  }
+  final Directory folderDir = Directory(folder);
+  if (!folderDir.existsSync()) return;
+  for (final FileSystemEntity entry in folderDir.listSync()) {
+    final String name = entry.uri.pathSegments.last;
+    if (entry is! File || !name.toLowerCase().endsWith('.md')) continue;
+    if (listed.contains(name.substring(0, name.length - 3).toLowerCase())) {
+      continue;
+    }
+    final String text;
+    try {
+      text = entry.readAsStringSync();
+    } on FileSystemException {
+      continue;
+    }
+    if (ours(text)) {
+      work.text.add(TextPart('prompts', entry.path, drop, drop, ours));
+    }
+  }
+}
+
+const String _promptOwnerKey = 'installed-by';
+
+/// A prompt file's text: front matter, then the body.
+String promptFile(PromptSpec prompt, String product) => <String>[
+  '---',
+  if (prompt.description != null) 'description: ${prompt.description}',
+  '$_promptOwnerKey: $product',
+  '---',
+  '',
+  prompt.body.trimRight(),
+  '',
+].join('\n');
+
+/// The product named by a prompt file's ownership line, or null.
+String? promptOwner(String text) {
+  final List<String> lines = const LineSplitter().convert(text);
+  if (lines.isEmpty || lines.first.trim() != '---') return null;
+  for (final String line in lines.skip(1)) {
+    if (line.trim() == '---') return null;
+    final int colon = line.indexOf(':');
+    if (colon > 0 && line.substring(0, colon).trim() == _promptOwnerKey) {
+      return line.substring(colon + 1).trim();
+    }
+  }
+  return null;
 }
 
 /// The existing entry named [name] as text, or null when there is none or
