@@ -185,7 +185,9 @@ ClientWork buildWork(
 
 /// The product's prompt files, each `<name>.md` with a front matter that
 /// carries its description and the product's ownership line. A file of that
-/// name the product did not write is the person's and is never replaced.
+/// name the product did not write (on a case-insensitive disk, also one
+/// that differs only in case) is the person's: that one prompt is skipped
+/// and the file kept, and the others are written as usual.
 /// Files the product wrote earlier and no longer lists are removed. A
 /// manifest that says nothing about prompts leaves them as they are, so a
 /// host that does not know its list here changes nothing; removing the
@@ -217,14 +219,7 @@ void _prompts(
       TextPart(
         'prompts',
         file,
-        (String? text) {
-          if (text != null && !ours(text)) {
-            throw const FormatException(
-              'a prompt of this name is not the product\'s; rename or remove it.',
-            );
-          }
-          return content;
-        },
+        (String? text) => text != null && !ours(text) ? text : content,
         drop,
         ours,
       ),
