@@ -16,6 +16,21 @@
     "instructions": { "$ref": "#/$defs/instructions" },
     "skills": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/directory" } },
     "plugin": { "$ref": "#/$defs/directory" },
+    "prompts": {
+      "description": "Prompt files kept in the client's prompts directory as <name>.md. Their text takes no placeholders. An empty list removes the product's earlier prompt files; without this field they are left as they are, and removing the product deletes them.",
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "body"],
+        "properties": {
+          "name": { "type": "string", "maxLength": 64, "pattern": "^[^\\\\/:*?\"<>|\\s.][^\\\\/:*?\"<>|\\s]*$" },
+          "description": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "body": { "type": "string", "minLength": 1, "maxLength": 16384 }
+        }
+      }
+    },
     "permissions": {
       "type": "object",
       "additionalProperties": false,
@@ -33,7 +48,8 @@
           "instructions": { "type": ["object", "null"] },
           "skills": { "type": ["array", "null"] },
           "plugin": { "type": ["object", "null"] },
-          "permissions": { "type": ["object", "null"] }
+          "permissions": { "type": ["object", "null"] },
+          "prompts": { "type": ["array", "null"] }
         }
       }
     }

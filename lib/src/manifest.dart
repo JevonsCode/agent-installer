@@ -74,6 +74,16 @@ final class DirectorySpec {
   final AdoptMarker? adopt;
 }
 
+/// A prompt file the product keeps in the client's prompts directory as
+/// `<name>.md`, such as a Codex custom prompt: [body] after a front matter
+/// holding [description] and the product's ownership line.
+final class PromptSpec {
+  const PromptSpec(this.name, this.body, {this.description});
+  final String name;
+  final String body;
+  final String? description;
+}
+
 /// A file inside an existing directory, optionally containing [contains],
 /// that marks the directory as the product's.
 final class AdoptMarker {
@@ -99,6 +109,7 @@ final class ResolvedProduct {
     this.skills = const <DirectorySpec>[],
     this.plugin,
     this.permissions = const <String>[],
+    this.prompts,
   });
 
   final String product;
@@ -114,6 +125,11 @@ final class ResolvedProduct {
   final List<DirectorySpec> skills;
   final DirectorySpec? plugin;
   final List<String> permissions;
+
+  /// The prompt files the product keeps in the client, or null when the
+  /// manifest says nothing about prompts. An empty list removes the
+  /// product's earlier prompt files.
+  final List<PromptSpec>? prompts;
 
   bool isOurHook(String command) => hookMarkers.any(command.contains);
 }
@@ -454,6 +470,27 @@ final class ProductManifest {
             ];
           }();
 
+    List<PromptSpec>? prompts;
+    if (json['prompts'] != null) {
+      final Object? raw = json['prompts'];
+      if (raw is! List || raw.length > _promptLimit) {
+        invalidManifest(
+          '$path.prompts',
+          'must be a list of at most $_promptLimit items.',
+        );
+      }
+      prompts = <PromptSpec>[
+        for (final (int i, Object? p) in raw.indexed)
+          _prompt(p, '$path.prompts[$i]'),
+      ];
+      final Set<String> names = <String>{
+        for (final PromptSpec p in prompts) p.name.toLowerCase(),
+      };
+      if (names.length != prompts.length) {
+        invalidManifest('$path.prompts', 'prompt names must be unique.');
+      }
+    }
+
     return ResolvedProduct(
       product: product,
       version: version,
@@ -468,9 +505,46 @@ final class ProductManifest {
           ? null
           : directory(json['plugin'], '$path.plugin'),
       permissions: permissions,
+      prompts: prompts,
     );
   }
 }
+
+// A roster of people or agents can be longer than the other lists.
+const int _promptLimit = 256;
+
+// A prompt's text is the product's content, written as given: it takes no
+// placeholders, so a name such as "{draft}" stays as it is.
+PromptSpec _prompt(Object? raw, String at) {
+  final Map<String, Object?> p = _object(raw, at);
+  _keys(p, const <String>{'name', 'description', 'body'}, at);
+  final String name = _text(p['name'], '$at.name', 64);
+  if (!_promptName.hasMatch(name)) {
+    invalidManifest(
+      '$at.name',
+      'must be a file name without extension, spaces or a leading dot.',
+    );
+  }
+  final String? description = p['description'] == null
+      ? null
+      : _text(p['description'], '$at.description', 256);
+  if (description != null && _control.hasMatch(description)) {
+    invalidManifest('$at.description', 'must be a single line.');
+  }
+  return PromptSpec(
+    name,
+    _text(p['body'], '$at.body', 16384),
+    description: description,
+  );
+}
+
+final RegExp _control = RegExp(r'[\x00-\x1f\x7f]');
+
+// Any script; no path separators, characters Windows reserves, whitespace,
+// control characters or a leading dot.
+final RegExp _promptName = RegExp(
+  r'^[^\\/:*?"<>|\s.\x00-\x1f\x7f][^\\/:*?"<>|\s\x00-\x1f\x7f]*$',
+);
 
 const Set<String> _components = <String>{
   'mcp',
@@ -479,6 +553,7 @@ const Set<String> _components = <String>{
   'skills',
   'plugin',
   'permissions',
+  'prompts',
 };
 
 /// Maps merge recursively, null removes a key, anything else replaces.

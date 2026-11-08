@@ -41,7 +41,7 @@
         "path": { "type": "string", "description": "Shown relative to the home directory, e.g. ~/.claude.json." },
         "components": {
           "type": "array",
-          "items": { "enum": ["mcp", "hooks", "permissions", "instructions", "skills", "plugin"] }
+          "items": { "enum": ["mcp", "hooks", "permissions", "instructions", "skills", "plugin", "prompts"] }
         },
         "action": {
           "description": "adopt: an existing directory that already holds the product's files only gets its receipt.",
