@@ -265,8 +265,8 @@ verified.
   `installed-by: <product>`. The text is written as given, without
   placeholders. A same-named file without that line is the person's and is
   never overwritten. A file the product wrote earlier and no longer lists is
-  removed on apply (also when the manifest no longer has `prompts`), and
-  `remove` deletes every file of the product's there. Codex lists them in
+  removed on apply; a manifest without `prompts` leaves them as they are,
+  and `remove` always deletes every file of the product's there. Codex lists them in
   its / menu as `prompts:<name>`.
 - **Skills / plugins**: the whole directory is copied, and a receipt file
   `.agent-installer.json` is written into the target directory. A

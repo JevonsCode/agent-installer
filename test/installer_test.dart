@@ -1331,7 +1331,9 @@ void main() {
         expect(read('.codex/prompts/mine.md'), '# my own prompt\n');
         expect(read('.codex/prompts/other.md'), contains('another-product'));
 
-        // An empty list, or a manifest without prompts, removes the rest.
+        // A manifest without prompts leaves them; an empty list removes them.
+        installer(product: withPrompts(null)).apply(<String>['codex']);
+        expect(read('.codex/prompts/fla-a.md'), isNotNull);
         installer(
           product: withPrompts(const <Map<String, Object?>>[]),
         ).apply(<String>['codex']);
@@ -1365,7 +1367,8 @@ void main() {
       i.apply(<String>['codex']);
       // A file the product wrote under an earlier list goes too.
       write('.codex/prompts/fla-old.md', '---\ninstalled-by: acme\n---\nold\n');
-      i.remove(<String>['codex']);
+      // Removing takes them all, even with a manifest without prompts.
+      installer(product: withPrompts(null)).remove(<String>['codex']);
       expect(read('.codex/prompts/fla-a.md'), isNull);
       expect(read('.codex/prompts/fla-old.md'), isNull);
       expect(read('.codex/prompts/mine.md'), 'mine\n');

@@ -218,8 +218,8 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
 - **Prompts**：`"prompts": [{ "name": "fla-jamie-ash", "description": "Jamie Ash — Beta — 工程", "body": "#FLA Jamie Ash" }]`
   （最多 256 个）写成客户端 prompts 目录里的 `<name>.md`，开头的 front matter 写
   description 和 `installed-by: <产品>`。正文原样写入，不替换占位符。没有这一行的同名
-  文件属于用户，永远不覆盖。本产品以前写过、现在不再列出的文件在 apply 时删除（清单里
-  不再有 `prompts` 也一样），`remove` 删除本产品在那里的全部文件。Codex 在 / 菜单里
+  文件属于用户，永远不覆盖。本产品以前写过、现在不再列出的文件在 apply 时删除；清单里
+  没有 `prompts` 时不动它们，`remove` 总是删除本产品在那里的全部文件。Codex 在 / 菜单里
   以 `prompts:<name>` 列出它们。
 - **Skills / 插件**：整目录复制，目标目录内写回执 `.agent-installer.json`。不覆盖不属于
   本产品的同名目录；用户改过的目录会被保留并报告。没有回执、但文件与产品完全一致的

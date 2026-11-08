@@ -7,7 +7,8 @@
 - `prompts` component: a product lists prompt files (`name`, `description`,
   `body`), written as `<name>.md` with a front matter that names the
   product (`installed-by`). Apply removes the product's files it no longer
-  lists; remove deletes only the product's; a person's file of the same name
+  lists and leaves them alone when the manifest has no `prompts`; remove
+  deletes all of the product's and nothing else; a person's file of the same name
   is a conflict and stays. Built-in `codex` keeps them in
   `{CODEX_HOME}/prompts`, which the Codex app lists in its / menu as
   `prompts:<name>`. Extension targets name the folder with

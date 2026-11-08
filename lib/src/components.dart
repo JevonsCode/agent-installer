@@ -186,8 +186,10 @@ ClientWork buildWork(
 /// The product's prompt files, each `<name>.md` with a front matter that
 /// carries its description and the product's ownership line. A file of that
 /// name the product did not write is the person's and is never replaced.
-/// Files the product wrote earlier and no longer lists are removed, also
-/// when the manifest says nothing about prompts any more.
+/// Files the product wrote earlier and no longer lists are removed. A
+/// manifest that says nothing about prompts leaves them as they are, so a
+/// host that does not know its list here changes nothing; removing the
+/// product still deletes every prompt file of its own.
 void _prompts(
   ClientWork work,
   InstallTarget target,
@@ -195,7 +197,8 @@ void _prompts(
   InstallEnvironment env,
   String Function(String template) path,
 ) {
-  final List<PromptSpec> prompts = product.prompts ?? const <PromptSpec>[];
+  final List<PromptSpec>? declared = product.prompts;
+  final List<PromptSpec> prompts = declared ?? const <PromptSpec>[];
   final String? dir = target.promptsDir;
   if (dir == null) {
     if (prompts.isNotEmpty) work.unsupported.add('prompts');
@@ -242,7 +245,15 @@ void _prompts(
       continue;
     }
     if (ours(text)) {
-      work.text.add(TextPart('prompts', entry.path, drop, drop, ours));
+      work.text.add(
+        TextPart(
+          'prompts',
+          entry.path,
+          declared == null ? (String? t) => t : drop,
+          drop,
+          ours,
+        ),
+      );
     }
   }
 }
