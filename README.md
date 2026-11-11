@@ -318,9 +318,15 @@ to its extension file; see the fields in
   own `package.json`, is added to each profile that has a `package.json` as a
   `link:` dependency, a `dsh.profile.bundles` entry and the
   `node_modules/<package>` link (a junction on Windows), as
-  `dsh plugin --profile <name> add link:<dir>` does. A profile without a
-  bundle list, or that already depends on that name otherwise, is reported
-  and left as it is; remove takes back only the product's own entries.
+  `dsh plugin --profile <name> add link:<dir>` does. Ownership is decided
+  per profile first: a profile is changed only when its `package.json` names
+  the package not at all or with exactly the product's `link:` spec, and its
+  `node_modules/<package>` is absent or a link to the installed plugin,
+  reached through plain directories (a linked `node_modules` or scope folder
+  is never written through). Any other profile (another version of that
+  name and pnpm's link to it, a link elsewhere, a real directory, no bundle
+  list yet) is reported and left whole, its file and its link alike, by
+  apply and by remove.
 - When the file name uses a built-in ID (e.g. `cursor.json`), the keys listed
   under `install` replace the built-in values; the rest are kept.
 - `afterInstall` lists the steps left to the person after a change, as

@@ -296,9 +296,11 @@ final class AgentInstaller {
     );
   }
 
-  /// A link the product makes: missing, current when it points at its
-  /// target, outdated when it points elsewhere; anything else at that path
-  /// is the person's.
+  /// A link the product makes: missing, or current when it points at its
+  /// target. A link elsewhere, or anything else at that path, is not the
+  /// product's: it is a conflict, never replaced or removed. (The profile's
+  /// ownership is decided before planning, in components.dart; this keeps a
+  /// change made in between from being taken over.)
   _DirState _linkState(LinkPart part) {
     final Link link = Link(part.path);
     final FileSystemEntityType type = FileSystemEntity.typeSync(
@@ -315,26 +317,19 @@ final class AgentInstaller {
             '${product.name}.',
       );
     }
+    final String target;
     try {
-      return _DirState(
-        _samePath(link.targetSync(), part.target) ? 'current' : 'outdated',
-        null,
-        ours: true,
-      );
+      target = link.targetSync();
     } on FileSystemException {
-      return _DirState('outdated', null, ours: true);
+      return _DirState('conflict', '${env.display(part.path)} cannot be read.');
     }
-  }
-
-  bool _samePath(String a, String b) {
-    String norm(String p) {
-      String s = p.replaceAll(r'\', '/');
-      if (s.startsWith('//?/')) s = s.substring(4);
-      while (s.endsWith('/')) s = s.substring(0, s.length - 1);
-      return env.windows ? s.toLowerCase() : s;
-    }
-
-    return norm(a) == norm(b);
+    return samePath(target, part.target, windows: env.windows)
+        ? _DirState('current', null, ours: true)
+        : _DirState(
+            'conflict',
+            '${env.display(part.path)} links to $target, not to '
+                "${product.name}'s plugin.",
+          );
   }
 
   PlannedChange? _editLink(
@@ -351,16 +346,14 @@ final class AgentInstaller {
     }
     if (install && state.state == 'current') return null;
     if (!install && state.state == 'missing') return null;
-    final String action = !install
-        ? 'delete'
-        : state.state == 'missing'
-        ? 'create'
-        : 'update';
+    final String action = install ? 'create' : 'delete';
     if (!write) return PlannedChange(shown, <String>[part.component], action);
     try {
-      final Link link = Link(part.path);
-      if (state.state != 'missing') link.deleteSync();
-      if (install) _directoryLink(part.path, part.target);
+      if (install) {
+        _directoryLink(part.path, part.target);
+      } else {
+        Link(part.path).deleteSync();
+      }
     } on FileSystemException catch (error) {
       problems.add(
         '${part.component}: $shown: the link could not be '

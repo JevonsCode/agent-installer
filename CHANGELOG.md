@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.1 (2026-11-12)
+
+### Fixed
+
+- `plugins.profiles` (the `dsh` client) no longer replaces or removes a
+  profile's package link it does not own. 0.5.0 left a conflicting
+  `package.json` as it was but still re-pointed `node_modules/<package>`:
+  with `"fuli-dsh": "2.0.0"` and pnpm's link to that version, apply swapped
+  in the product's plugin under the person's declaration, and remove
+  deleted the person's link even when the product had never been connected.
+  Ownership is now decided per profile before planning, from the
+  `package.json` and the link together: a profile is changed only when it
+  names the package not at all or with exactly the product's `link:` spec,
+  and the link is absent or points at the installed plugin. Any other
+  profile is reported and left whole, by apply and by remove.
+- A link that points elsewhere is a conflict, never `outdated`: apply does
+  not re-point it and remove does not delete it.
+- Links are made only through plain directories: a profile whose
+  `node_modules` (or scope folder) is itself a link or junction is
+  reported and left alone, so nothing is written outside the profile.
+
 ## 0.5.0 (2026-11-12)
 
 ### Added
