@@ -84,6 +84,19 @@ String spec() => 'link:${installedPlugin().replaceAll(r'\', '/')}';
 String linkPath(String name, [String package = 'fuli-dsh']) =>
     <String>[profileDir(name), 'node_modules', ...package.split('/')].join(sep);
 
+/// A directory link as pnpm makes it: a junction on Windows.
+void directoryLink(String path, String target) {
+  Directory(path).parent.createSync(recursive: true);
+  if (Platform.isWindows) {
+    Process.runSync('cmd', <String>['/c', 'mklink', '/J', path, target]);
+  } else {
+    Link(path).createSync(target);
+  }
+}
+
+String linkTarget(String path) => Link(path).targetSync();
+String text(String path) => File(path).readAsStringSync();
+
 ClientStatus status(AgentInstaller i) => i.status(<String>['dsh']).single;
 Map<String, String> states(ClientStatus s) => <String, String>{
   for (final ComponentStatus c in s.components) c.component: c.state,
@@ -158,23 +171,6 @@ void main() {
       final ClientResult again = i.apply(<String>['dsh']).single;
       expect(again.changes, isEmpty, reason: 'idempotent');
 
-      // A link pointing elsewhere is outdated and repaired.
-      Link(linkPath('desktop')).deleteSync();
-      if (Platform.isWindows) {
-        Process.runSync('cmd', <String>[
-          '/c',
-          'mklink',
-          '/J',
-          linkPath('desktop'),
-          bundle,
-        ]);
-      } else {
-        Link(linkPath('desktop')).createSync(bundle);
-      }
-      expect(states(status(i))['plugin'], 'outdated');
-      i.apply(<String>['dsh']);
-      expect(states(status(i))['plugin'], 'current');
-
       final ClientResult removed = i.remove(<String>['dsh']).single;
       expect(removed.problems, isEmpty);
       expect(Directory(installedPlugin()).existsSync(), isFalse);
@@ -198,50 +194,140 @@ void main() {
   );
 
   test(
-    'a profile that depends on the name otherwise, or has no bundle list, is left as it is',
+    'another version of the name, with the link pnpm made to it, is left whole on apply and remove',
     () {
+      // A profile where the person installed fuli-dsh 2.0.0 (say, the public
+      // connector's package of that name) before connecting the product.
+      final String store = '${home.path}${sep}pnpm-store${sep}fuli-dsh@2.0.0';
+      Directory(store).createSync(recursive: true);
+      File(
+        '$store${sep}index.js',
+      ).writeAsStringSync('export const name = "theirs";\n');
       profile(
         'desktop',
-        bundles: <String>['@deepseek-ai/dsh-base'],
+        bundles: <String>['@deepseek-ai/dsh-base', 'fuli-dsh'],
         deps: <String, String>{'fuli-dsh': '2.0.0'},
       );
-      profile('fresh');
+      directoryLink(linkPath('desktop'), store);
+      profile('web', bundles: <String>['@deepseek-ai/dsh-base']);
+      final String manifest = '${profileDir('desktop')}${sep}package.json';
+      final String before = text(manifest);
+      final String linkBefore = linkTarget(linkPath('desktop'));
       final AgentInstaller i = installer();
-      final String before = File(
-        '${profileDir('desktop')}${sep}package.json',
-      ).readAsStringSync();
-      final ClientResult result = i.apply(<String>['dsh']).single;
+
+      // Removing before any connection touches nothing of theirs either.
+      expect(i.remove(<String>['dsh']).single.changes, isEmpty);
+      expect(linkTarget(linkPath('desktop')), linkBefore);
+
+      final ClientResult applied = i.apply(<String>['dsh']).single;
       expect(
-        result.problems.join('\n'),
-        contains('already depends on fuli-dsh (2.0.0)'),
+        applied.problems.join('\n'),
+        allOf(
+          contains('desktop'),
+          contains('already depends on fuli-dsh (2.0.0)'),
+        ),
       );
-      expect(
-        result.problems.join('\n'),
-        contains('no dsh.profile.bundles list'),
-      );
-      expect(
-        File('${profileDir('desktop')}${sep}package.json').readAsStringSync(),
-        before,
-      );
+      expect(text(manifest), before);
+      expect(linkTarget(linkPath('desktop')), linkBefore);
+      expect(File('$store${sep}index.js').existsSync(), isTrue);
+      // The other profile is the product's, and connected.
+      expect((manifestOf('web')['dependencies']! as Map)['fuli-dsh'], spec());
+      expect(linkTarget(linkPath('web')), isNotEmpty);
       expect(status(i).state, 'conflict');
-      // Removing never touches the person's own dependency.
+
       i.remove(<String>['dsh']);
+      expect(text(manifest), before);
+      expect(linkTarget(linkPath('desktop')), linkBefore);
+      expect(File('$store${sep}index.js').existsSync(), isTrue);
       expect(
-        (manifestOf('desktop')['dependencies']! as Map)['fuli-dsh'],
-        '2.0.0',
+        FileSystemEntity.typeSync(linkPath('web'), followLinks: false),
+        FileSystemEntityType.notFound,
       );
     },
   );
 
-  test('a real directory at the link path is the person\'s', () {
-    profile('desktop', bundles: <String>['@deepseek-ai/dsh-base']);
-    Directory(linkPath('desktop')).createSync(recursive: true);
+  test(
+    'a link elsewhere with no dependency, or a real directory there, is the person\'s',
+    () {
+      final String elsewhere = '${home.path}${sep}elsewhere';
+      Directory(elsewhere).createSync();
+      profile('desktop', bundles: <String>['@deepseek-ai/dsh-base']);
+      directoryLink(linkPath('desktop'), elsewhere);
+      profile('web', bundles: <String>['@deepseek-ai/dsh-base']);
+      Directory(linkPath('web')).createSync(recursive: true);
+      final String desktopBefore = text(
+        '${profileDir('desktop')}${sep}package.json',
+      );
+      final String webBefore = text('${profileDir('web')}${sep}package.json');
+      final AgentInstaller i = installer();
+      final String problems = i
+          .apply(<String>['dsh'])
+          .single
+          .problems
+          .join('\n');
+      expect(problems, contains('node_modules/fuli-dsh links to'));
+      expect(
+        problems,
+        contains('node_modules/fuli-dsh exists and is not a link'),
+      );
+      expect(states(status(i))['plugin'], 'conflict');
+      i.remove(<String>['dsh']);
+      expect(linkTarget(linkPath('desktop')), contains('elsewhere'));
+      expect(Directory(linkPath('web')).existsSync(), isTrue);
+      expect(text('${profileDir('desktop')}${sep}package.json'), desktopBefore);
+      expect(text('${profileDir('web')}${sep}package.json'), webBefore);
+    },
+  );
+
+  test(
+    'a profile whose node_modules is a link is left alone, so nothing is written outside it',
+    () {
+      final String outside = '${home.path}${sep}outside-modules';
+      Directory(outside).createSync();
+      profile('desktop', bundles: <String>['@deepseek-ai/dsh-base']);
+      directoryLink('${profileDir('desktop')}${sep}node_modules', outside);
+      final String before = text('${profileDir('desktop')}${sep}package.json');
+      final AgentInstaller i = installer();
+      expect(
+        i.apply(<String>['dsh']).single.problems.join('\n'),
+        contains('node_modules is not a plain directory'),
+      );
+      expect(Directory(outside).listSync(), isEmpty);
+      expect(text('${profileDir('desktop')}${sep}package.json'), before);
+    },
+  );
+
+  test(
+    'a profile changed by hand after connecting is left as it is by remove',
+    () {
+      final String elsewhere = '${home.path}${sep}elsewhere';
+      Directory(elsewhere).createSync();
+      profile('desktop', bundles: <String>['@deepseek-ai/dsh-base']);
+      final AgentInstaller i = installer();
+      expect(i.apply(<String>['dsh']).single.problems, isEmpty);
+      // The person points the package somewhere else themselves.
+      Link(linkPath('desktop')).deleteSync();
+      directoryLink(linkPath('desktop'), elsewhere);
+      final String before = text('${profileDir('desktop')}${sep}package.json');
+      i.remove(<String>['dsh']);
+      expect(linkTarget(linkPath('desktop')), contains('elsewhere'));
+      expect(text('${profileDir('desktop')}${sep}package.json'), before);
+    },
+  );
+
+  test('a profile without a bundle list is reported and left as it is', () {
+    profile('fresh');
+    final String before = text('${profileDir('fresh')}${sep}package.json');
     final AgentInstaller i = installer();
-    final ClientResult result = i.apply(<String>['dsh']).single;
-    expect(result.problems.join('\n'), contains('is not a link made by Acme'));
-    expect(states(status(i))['plugin'], 'conflict');
-    i.remove(<String>['dsh']);
-    expect(Directory(linkPath('desktop')).existsSync(), isTrue);
+    expect(
+      i.apply(<String>['dsh']).single.problems.join('\n'),
+      contains('no dsh.profile.bundles list'),
+    );
+    expect(text('${profileDir('fresh')}${sep}package.json'), before);
+    expect(
+      FileSystemEntity.typeSync(linkPath('fresh'), followLinks: false),
+      FileSystemEntityType.notFound,
+    );
   });
 
   test(

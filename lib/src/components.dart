@@ -202,9 +202,18 @@ ClientWork buildWork(
 /// profile directory: a `link:` dependency and a `dsh.profile.bundles` entry
 /// in its `package.json`, and the `node_modules/<package>` link, so the
 /// profile loads it on its next start. The package name is the plugin
-/// source's `package.json` name. A profile whose `package.json` has no
-/// bundle list, or that already depends on that name otherwise, is left as
-/// it is and reported.
+/// source's `package.json` name.
+///
+/// Ownership is decided per profile before anything is planned, from what is
+/// on disk: the profile is the product's to change when its `package.json`
+/// names that package not at all or with exactly the product's `link:` spec,
+/// and its `node_modules/<package>` is absent or a link to the installed
+/// plugin, reached through real directories only (no link or junction
+/// between the profile and the package, so nothing is written outside it).
+/// Any other profile (another version or spec of that name, a link elsewhere,
+/// a real directory there, a linked `node_modules`, or no bundle list yet) is
+/// left whole, its file and its link alike, and reported; apply and remove
+/// treat it the same.
 void _pluginProfiles(
   ClientWork work,
   InstallTarget target,
@@ -237,7 +246,26 @@ void _pluginProfiles(
           )
           .toList()
         ..sort((a, b) => a.path.compareTo(b.path));
+  final List<String> conflicts = <String>[];
   for (final Directory profile in each) {
+    final String manifest = '${profile.path}${env.separator}package.json';
+    final List<String> segments = <String>[
+      'node_modules',
+      ...package.split('/'),
+    ];
+    final String? problem = _profileProblem(
+      profile.path,
+      manifest,
+      segments,
+      package,
+      spec,
+      installed,
+      env,
+    );
+    if (problem != null) {
+      conflicts.add('${env.display(profile.path)}: $problem');
+      continue;
+    }
     work.text.add(
       TextPart(
         'plugin',
@@ -250,15 +278,93 @@ void _pluginProfiles(
     work.links.add(
       LinkPart(
         'plugin',
-        <String>[
-          profile.path,
-          'node_modules',
-          ...package.split('/'),
-        ].join(env.separator),
+        <String>[profile.path, ...segments].join(env.separator),
         installed,
       ),
     );
   }
+  if (conflicts.isNotEmpty) {
+    work.blocked['plugin'] =
+        '${conflicts.join('; ')}. These profiles were left as they are.';
+  }
+}
+
+/// Why [profile] is not the product's to change, or null when it is.
+String? _profileProblem(
+  String profile,
+  String manifest,
+  List<String> segments,
+  String package,
+  String spec,
+  String installed,
+  InstallEnvironment env,
+) {
+  final String? text;
+  try {
+    text = File(manifest).readAsStringSync();
+  } on FileSystemException {
+    return 'its package.json cannot be read';
+  }
+  final Object? dependency;
+  try {
+    dependency = _profileDependency(text, package);
+    if (dependency != null && dependency != spec) {
+      return 'it already depends on $package ($dependency)';
+    }
+    if (dependency == null && _profileBundles(text) == null) {
+      return 'it has no dsh.profile.bundles list; start the profile once first';
+    }
+  } on FormatException catch (error) {
+    return 'its package.json cannot be parsed (${error.message})';
+  }
+  // Every directory between the profile and the link is a real directory.
+  String at = profile;
+  for (final String segment in segments.take(segments.length - 1)) {
+    at = '$at${env.separator}$segment';
+    final FileSystemEntityType type = FileSystemEntity.typeSync(
+      at,
+      followLinks: false,
+    );
+    if (type == FileSystemEntityType.notFound) return null;
+    if (type != FileSystemEntityType.directory) {
+      return '${segments.take(segments.indexOf(segment) + 1).join('/')} is '
+          'not a plain directory';
+    }
+  }
+  final String link = '$at${env.separator}${segments.last}';
+  final FileSystemEntityType type = FileSystemEntity.typeSync(
+    link,
+    followLinks: false,
+  );
+  if (type == FileSystemEntityType.notFound) return null;
+  if (type != FileSystemEntityType.link) {
+    return '${segments.join('/')} exists and is not a link';
+  }
+  final String target;
+  try {
+    target = Link(link).targetSync();
+  } on FileSystemException {
+    return '${segments.join('/')} cannot be read';
+  }
+  return samePath(target, installed, windows: env.windows)
+      ? null
+      : '${segments.join('/')} links to $target';
+}
+
+/// Whether two paths name the same place, as a link target reads back:
+/// separators, a Windows `\\?\` prefix, trailing separators and, on
+/// Windows, case aside.
+bool samePath(String a, String b, {required bool windows}) {
+  String norm(String p) {
+    String s = p.replaceAll(r'\', '/');
+    if (s.startsWith('//?/')) s = s.substring(4);
+    while (s.endsWith('/')) {
+      s = s.substring(0, s.length - 1);
+    }
+    return windows ? s.toLowerCase() : s;
+  }
+
+  return norm(a) == norm(b);
 }
 
 final RegExp _packageNamePattern = RegExp(

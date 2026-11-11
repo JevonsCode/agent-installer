@@ -263,8 +263,12 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
   目录。装好的插件（自身 `package.json` 里写了 npm 包名）会登记进每个有
   `package.json` 的 profile：一条 `link:` 依赖、一项 `dsh.profile.bundles`，以及
   `node_modules/<包名>` 链接（Windows 上是 junction），效果与
-  `dsh plugin --profile <名字> add link:<目录>` 相同。没有 bundle 列表、或已经以别的
-  方式依赖这个包名的 profile 会被报告并保持原样；卸载只收回本产品自己的条目。
+  `dsh plugin --profile <名字> add link:<目录>` 相同。先逐个 profile 判断归属：只有
+  `package.json` 完全没提这个包名、或写的正是本产品的 `link:` 规格，并且
+  `node_modules/<包名>` 不存在、或是指向已装插件的链接，而且一路经过的都是普通目录
+  （不会穿过被链接的 `node_modules` 或 scope 目录写到别处）时，才改这个 profile。其他
+  情况（别的版本加上 pnpm 给它建的链接、指向别处的链接、真实目录、还没有 bundle 列表）
+  都会报告，并且 apply 和 remove 都让这个 profile 原样保留，文件和链接都不动。
 - 文件名用内置 ID（如 `cursor.json`）时，`install` 中列出的键替换内置值，其余保留。
 - `afterInstall` 列出变更后用户还要做的事：写成
   `{ "code": "restart_client", "message": "Restart Acme Agent." }`（代码取自上表），
