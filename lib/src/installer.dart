@@ -220,49 +220,37 @@ final class AgentInstaller {
     }
     final ResolvedProduct resolved = product.forTarget(target);
     final ClientWork work = buildWork(target, resolved, env);
-    final List<ComponentStatus> states = <ComponentStatus>[];
-    final List<String> order = <String>[];
-    for (final TextPart p in work.text) {
-      if (!order.contains(p.component)) order.add(p.component);
-    }
-    for (final String component in order) {
-      states.add(
-        _textState(component, work.text.where((p) => p.component == component)),
-      );
-    }
+    // One status per component, whatever mix of files, directories and
+    // links it is made of (a DeepSeek Harness plugin is all three).
+    final Map<String, List<_DirState>> parts = <String, List<_DirState>>{};
     for (final String component in <String>{
-      for (final DirectoryPart d in work.directories) d.component,
+      for (final TextPart p in work.text) p.component,
     }) {
-      final List<_DirState> dirs = <_DirState>[
-        for (final DirectoryPart d in work.directories)
-          if (d.component == component) _dirState(d, resolved),
-      ];
-      final _DirState? conflict = dirs
-          .where((d) => d.state == 'conflict')
-          .firstOrNull;
-      states.add(
-        ComponentStatus(
-          component,
-          conflict != null
-              ? 'conflict'
-              : dirs.every((d) => d.state == 'current')
-              ? 'current'
-              : dirs.every((d) => d.state == 'missing')
-              ? 'missing'
-              : 'outdated',
-          conflict?.message,
-        ),
+      final ComponentStatus text = _textState(
+        component,
+        work.text.where((p) => p.component == component),
+      );
+      (parts[component] ??= <_DirState>[]).add(
+        _DirState(text.state, text.message),
       );
     }
-    states
-      ..addAll(<ComponentStatus>[
-        for (final MapEntry<String, String> e in work.blocked.entries)
-          ComponentStatus(e.key, 'conflict', e.value),
-      ])
-      ..addAll(<ComponentStatus>[
-        for (final String c in work.unsupported)
-          ComponentStatus(c, 'unsupported'),
-      ]);
+    for (final DirectoryPart d in work.directories) {
+      (parts[d.component] ??= <_DirState>[]).add(_dirState(d, resolved));
+    }
+    for (final LinkPart l in work.links) {
+      (parts[l.component] ??= <_DirState>[]).add(_linkState(l));
+    }
+    for (final MapEntry<String, String> e in work.blocked.entries) {
+      (parts[e.key] ??= <_DirState>[]).add(_DirState('conflict', e.value));
+    }
+    final List<ComponentStatus> states = <ComponentStatus>[
+      for (final MapEntry<String, List<_DirState>> e in parts.entries)
+        _combined(e.key, e.value),
+    ];
+    states..addAll(<ComponentStatus>[
+      for (final String c in work.unsupported)
+        ComponentStatus(c, 'unsupported'),
+    ]);
     final List<String> active = <String>[
       for (final ComponentStatus s in states)
         if (s.state != 'unsupported') s.state,
@@ -283,10 +271,105 @@ final class AgentInstaller {
         if (p.component == component) env.display(p.path),
       for (final DirectoryPart d in work.directories)
         if (d.component == component) env.display(d.target),
+      for (final LinkPart l in work.links)
+        if (l.component == component) env.display(l.path),
     }.toList();
     return ClientStatus(scan, state, <ComponentStatus>[
       for (final ComponentStatus s in states) s._at(pathsOf(s.component)),
     ]);
+  }
+
+  ComponentStatus _combined(String component, List<_DirState> states) {
+    final _DirState? conflict = states
+        .where((s) => s.state == 'conflict')
+        .firstOrNull;
+    return ComponentStatus(
+      component,
+      conflict != null
+          ? 'conflict'
+          : states.every((s) => s.state == 'current')
+          ? 'current'
+          : states.every((s) => s.state == 'missing')
+          ? 'missing'
+          : 'outdated',
+      conflict?.message,
+    );
+  }
+
+  /// A link the product makes: missing, current when it points at its
+  /// target, outdated when it points elsewhere; anything else at that path
+  /// is the person's.
+  _DirState _linkState(LinkPart part) {
+    final Link link = Link(part.path);
+    final FileSystemEntityType type = FileSystemEntity.typeSync(
+      part.path,
+      followLinks: false,
+    );
+    if (type == FileSystemEntityType.notFound) {
+      return _DirState('missing', null);
+    }
+    if (type != FileSystemEntityType.link) {
+      return _DirState(
+        'conflict',
+        '${env.display(part.path)} exists and is not a link made by '
+            '${product.name}.',
+      );
+    }
+    try {
+      return _DirState(
+        _samePath(link.targetSync(), part.target) ? 'current' : 'outdated',
+        null,
+        ours: true,
+      );
+    } on FileSystemException {
+      return _DirState('outdated', null, ours: true);
+    }
+  }
+
+  bool _samePath(String a, String b) {
+    String norm(String p) {
+      String s = p.replaceAll(r'\', '/');
+      if (s.startsWith('//?/')) s = s.substring(4);
+      while (s.endsWith('/')) s = s.substring(0, s.length - 1);
+      return env.windows ? s.toLowerCase() : s;
+    }
+
+    return norm(a) == norm(b);
+  }
+
+  PlannedChange? _editLink(
+    LinkPart part, {
+    required bool install,
+    required bool write,
+    required List<String> problems,
+  }) {
+    final _DirState state = _linkState(part);
+    final String shown = env.display(part.path);
+    if (state.state == 'conflict') {
+      if (install) problems.add('${part.component}: ${state.message}');
+      return null;
+    }
+    if (install && state.state == 'current') return null;
+    if (!install && state.state == 'missing') return null;
+    final String action = !install
+        ? 'delete'
+        : state.state == 'missing'
+        ? 'create'
+        : 'update';
+    if (!write) return PlannedChange(shown, <String>[part.component], action);
+    try {
+      final Link link = Link(part.path);
+      if (state.state != 'missing') link.deleteSync();
+      if (install) _directoryLink(part.path, part.target);
+    } on FileSystemException catch (error) {
+      problems.add(
+        '${part.component}: $shown: the link could not be '
+        '${install ? 'made' : 'removed'} '
+        '(${error.osError?.message ?? error.message}).',
+      );
+      return null;
+    }
+    return PlannedChange(shown, <String>[part.component], action);
   }
 
   ComponentStatus _textState(String component, Iterable<TextPart> parts) {
@@ -350,6 +433,20 @@ final class AgentInstaller {
       );
       if (change != null) changes.add(change);
     }
+    // Links point into the directories: made after them, removed before.
+    void links() {
+      for (final LinkPart l in work.links) {
+        final PlannedChange? change = _editLink(
+          l,
+          install: install,
+          write: write,
+          problems: problems,
+        );
+        if (change != null) changes.add(change);
+      }
+    }
+
+    if (!install) links();
     for (final DirectoryPart d in work.directories) {
       final PlannedChange? change = _editDirectory(
         target.id,
@@ -361,6 +458,7 @@ final class AgentInstaller {
       );
       if (change != null) changes.add(change);
     }
+    if (install) links();
     final bool hooksChanged = changes.any(
       (c) => c.components.contains('hooks'),
     );
@@ -814,6 +912,35 @@ final class AgentInstaller {
     for (final FileSystemEntity e in old.skip(5)) {
       e.deleteSync(recursive: true);
     }
+  }
+}
+
+/// Links [path] to the directory [target]. On Windows this is a junction, as
+/// pnpm makes for a `link:` dependency: a symbolic link there needs Developer
+/// Mode or administrator rights.
+void _directoryLink(String path, String target) {
+  Directory(path).parent.createSync(recursive: true);
+  if (!Platform.isWindows) {
+    Link(path).createSync(target);
+    return;
+  }
+  // mklink reads a forward slash as a switch; a home from the environment
+  // (DSH_HOME=C:/…) may carry them.
+  String native(String p) => p.replaceAll('/', r'\');
+  final ProcessResult result = Process.runSync('cmd', <String>[
+    '/c',
+    'mklink',
+    '/J',
+    native(path),
+    native(target),
+  ]);
+  if (result.exitCode != 0) {
+    throw FileSystemException(
+      '${result.stderr}'.trim().isEmpty
+          ? 'mklink /J failed'
+          : '${result.stderr}'.trim(),
+      path,
+    );
   }
 }
 

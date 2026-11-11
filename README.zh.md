@@ -161,6 +161,7 @@ installer.apply(['claude-code']);             // 用户确认后
 | `opencode` | `opencode.jsonc` 或 `opencode.json` | | | `skills` | `plugins/<产品>` |
 | `claude-desktop` | `claude_desktop_config.json`（macOS、Windows） | | | | |
 | `antigravity` | `~/.gemini/config/mcp_config.json` | | | | |
+| `dsh`（DeepSeek Harness） | 由插件 bundle 自带 | | | `{DSH_HOME}/skills` | `{DSH_HOME}/plugins/<产品>`，并链接进每个 profile |
 | `gemini-cli`、`kiro`、`qwen-code` | 各自的 `settings.json` / `mcp.json` | | | | |
 
 Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件，第一期没有内置；
@@ -258,6 +259,12 @@ Gemini CLI、Kiro 的 Hook，以及按 OpenCode 版本决定是否安装插件�
   `{configHome}`、`{appData}` 开始，不能包含 `..`。
 - 写入格式只能从内置格式中选：MCP 为 `claude-json`、`mcp-servers-json`、`kiro-json`、
   `opencode-json`、`codex-toml`，Hook 为 `claude-hooks`、`codex-hooks`、`cursor-hooks`。
+- `plugins` 还可以写 `profiles`：一个装着 DeepSeek Harness 式 profile（pnpm 项目）的
+  目录。装好的插件（自身 `package.json` 里写了 npm 包名）会登记进每个有
+  `package.json` 的 profile：一条 `link:` 依赖、一项 `dsh.profile.bundles`，以及
+  `node_modules/<包名>` 链接（Windows 上是 junction），效果与
+  `dsh plugin --profile <名字> add link:<目录>` 相同。没有 bundle 列表、或已经以别的
+  方式依赖这个包名的 profile 会被报告并保持原样；卸载只收回本产品自己的条目。
 - 文件名用内置 ID（如 `cursor.json`）时，`install` 中列出的键替换内置值，其余保留。
 - `afterInstall` 列出变更后用户还要做的事：写成
   `{ "code": "restart_client", "message": "Restart Acme Agent." }`（代码取自上表），

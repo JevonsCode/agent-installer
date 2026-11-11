@@ -186,6 +186,28 @@ const Map<String, Map<String, Object?>> builtinInstallTargets =
           },
         ],
       },
+      // DeepSeek Harness (dsh): plugins are npm bundles each profile under
+      // {home}/profiles adds as a dependency. A bundle carries its own MCP
+      // entry, so there is no MCP file.
+      'dsh': <String, Object?>{
+        'name': 'DeepSeek Harness',
+        'home': <String, Object?>{'env': 'DSH_HOME', 'default': '~/.dsh'},
+        'detect': <Object?>[
+          <String, Object?>{'command': 'dsh'},
+          <String, Object?>{'path': '{home}/profiles'},
+        ],
+        'skills': <String, Object?>{'dir': '{home}/skills'},
+        'plugins': <String, Object?>{
+          'dir': '{home}/plugins',
+          'profiles': '{home}/profiles',
+        },
+        'afterInstall': <Object?>[
+          <String, Object?>{
+            'code': 'restart_client',
+            'message': 'Restart DeepSeek Harness to load the change.',
+          },
+        ],
+      },
       'opencode': <String, Object?>{
         'name': 'OpenCode',
         'detect': <Object?>[
@@ -268,6 +290,7 @@ final class InstallTarget {
     this.instructionsOverrideFile,
     this.skillsDir,
     this.pluginsDir,
+    this.pluginProfilesDir,
     this.promptsDir,
     this.afterInstall = const <AfterInstallAction>[],
     this.extensionFile,
@@ -393,8 +416,14 @@ final class InstallTarget {
     String? dir(String key) {
       if (!json.containsKey(key)) return null;
       final Map<String, Object?> d = _object(json[key], '$path.$key');
-      _keys(d, const <String>{'dir'}, '$path.$key');
+      _keys(d, <String>{'dir', if (key == 'plugins') 'profiles'}, '$path.$key');
       return _template(d['dir'], '$path.$key.dir');
+    }
+
+    String? pluginProfiles;
+    if (json['plugins'] case final Map<String, Object?> plugins
+        when plugins.containsKey('profiles')) {
+      pluginProfiles = _template(plugins['profiles'], '$path.plugins.profiles');
     }
 
     final InstallTarget target = InstallTarget._(
@@ -425,6 +454,7 @@ final class InstallTarget {
       instructionsOverrideFile: instructionsOverride,
       skillsDir: dir('skills'),
       pluginsDir: dir('plugins'),
+      pluginProfilesDir: pluginProfiles,
       promptsDir: dir('prompts'),
       afterInstall: json.containsKey('afterInstall')
           ? _afterInstall(json['afterInstall'], '$path.afterInstall')
@@ -461,6 +491,12 @@ final class InstallTarget {
   final String? instructionsOverrideFile;
   final String? skillsDir;
   final String? pluginsDir;
+
+  /// A directory of DeepSeek Harness-style profiles, each a pnpm project with
+  /// a `package.json`: the installed plugin directory is also added to every
+  /// profile as a `link:` dependency, a `dsh.profile.bundles` entry and the
+  /// `node_modules` link, as `dsh plugin --profile <name> add link:<dir>` does.
+  final String? pluginProfilesDir;
 
   /// Where the client reads prompt files (`<name>.md`).
   final String? promptsDir;

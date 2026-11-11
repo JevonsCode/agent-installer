@@ -191,6 +191,7 @@ The full output is described in [result.schema.json](docs/result.schema.json).
 | `opencode` | `opencode.jsonc` or `opencode.json` | | | `skills` | `plugins/<product>` |
 | `claude-desktop` | `claude_desktop_config.json` (macOS, Windows) | | | | |
 | `antigravity` | `~/.gemini/config/mcp_config.json` | | | | |
+| `dsh` (DeepSeek Harness) | carried by the plugin bundle | | | `{DSH_HOME}/skills` | `{DSH_HOME}/plugins/<product>`, linked into every profile |
 | `gemini-cli`, `kiro`, `qwen-code` | each client's own `settings.json` / `mcp.json` | | | | |
 
 Hooks for Gemini CLI and Kiro, and deciding whether to install the OpenCode
@@ -312,6 +313,14 @@ to its extension file; see the fields in
 - The write format must be one of the built-in formats: for MCP,
   `claude-json`, `mcp-servers-json`, `kiro-json`, `opencode-json`,
   `codex-toml`; for hooks, `claude-hooks`, `codex-hooks`, `cursor-hooks`.
+- `plugins` may also name `profiles`, a directory of DeepSeek Harness-style
+  profiles (pnpm projects). The installed plugin, an npm package named in its
+  own `package.json`, is added to each profile that has a `package.json` as a
+  `link:` dependency, a `dsh.profile.bundles` entry and the
+  `node_modules/<package>` link (a junction on Windows), as
+  `dsh plugin --profile <name> add link:<dir>` does. A profile without a
+  bundle list, or that already depends on that name otherwise, is reported
+  and left as it is; remove takes back only the product's own entries.
 - When the file name uses a built-in ID (e.g. `cursor.json`), the keys listed
   under `install` replace the built-in values; the rest are kept.
 - `afterInstall` lists the steps left to the person after a change, as
