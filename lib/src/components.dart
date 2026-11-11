@@ -36,10 +36,24 @@ final class DirectoryPart {
   final AdoptMarker? adopt;
 }
 
+/// A directory link the product owns, pointing at one of its directories:
+/// `node_modules/<package>` in a DeepSeek Harness profile, as pnpm makes for
+/// a `link:` dependency (a junction on Windows).
+final class LinkPart {
+  LinkPart(this.component, this.path, this.target);
+  final String component;
+  final String path;
+  final String target;
+}
+
 /// Everything one client needs for one product.
 final class ClientWork {
   final List<TextPart> text = <TextPart>[];
   final List<DirectoryPart> directories = <DirectoryPart>[];
+
+  /// Applied after [directories], whose targets they point at; removed
+  /// before them.
+  final List<LinkPart> links = <LinkPart>[];
 
   /// Components the client cannot accept, with the reason.
   final Map<String, String> blocked = <String, String>{};
@@ -179,8 +193,147 @@ ClientWork buildWork(
 
   directories('skills', target.skillsDir, product.skills);
   directories('plugin', target.pluginsDir, <DirectorySpec>[?product.plugin]);
+  _pluginProfiles(work, target, product, env, path);
   _prompts(work, target, product, env, path);
   return work;
+}
+
+/// Registers the installed plugin in every profile under the target's
+/// profile directory: a `link:` dependency and a `dsh.profile.bundles` entry
+/// in its `package.json`, and the `node_modules/<package>` link, so the
+/// profile loads it on its next start. The package name is the plugin
+/// source's `package.json` name. A profile whose `package.json` has no
+/// bundle list, or that already depends on that name otherwise, is left as
+/// it is and reported.
+void _pluginProfiles(
+  ClientWork work,
+  InstallTarget target,
+  ResolvedProduct product,
+  InstallEnvironment env,
+  String Function(String template) path,
+) {
+  final DirectorySpec? plugin = product.plugin;
+  final String? profilesDir = target.pluginProfilesDir;
+  if (plugin == null || profilesDir == null || target.pluginsDir == null) {
+    return;
+  }
+  final String? package = _packageName(plugin.source);
+  if (package == null) {
+    work.blocked['plugin'] =
+        'The plugin source ${plugin.source} has no package.json with a valid name.';
+    return;
+  }
+  final String installed =
+      '${path(target.pluginsDir!)}${env.separator}${plugin.name}';
+  final String spec = 'link:${installed.replaceAll(r'\', '/')}';
+  final Directory profiles = Directory(path(profilesDir));
+  if (!profiles.existsSync()) return;
+  final List<Directory> each =
+      profiles
+          .listSync()
+          .whereType<Directory>()
+          .where(
+            (d) => File('${d.path}${env.separator}package.json').existsSync(),
+          )
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
+  for (final Directory profile in each) {
+    work.text.add(
+      TextPart(
+        'plugin',
+        '${profile.path}${env.separator}package.json',
+        (String? text) => _addProfileBundle(text, package, spec),
+        (String? text) => _removeProfileBundle(text, package, spec),
+        (String? text) => _profileDependency(text, package) == spec,
+      ),
+    );
+    work.links.add(
+      LinkPart(
+        'plugin',
+        <String>[
+          profile.path,
+          'node_modules',
+          ...package.split('/'),
+        ].join(env.separator),
+        installed,
+      ),
+    );
+  }
+}
+
+final RegExp _packageNamePattern = RegExp(
+  r'^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$',
+);
+
+String? _packageName(String source) {
+  try {
+    final Object? json = jsonDecode(
+      File('$source${Platform.pathSeparator}package.json').readAsStringSync(),
+    );
+    final Object? name = json is Map<String, Object?> ? json['name'] : null;
+    return name is String && _packageNamePattern.hasMatch(name) ? name : null;
+  } on Object {
+    return null;
+  }
+}
+
+Object? _profileDependency(String? text, String package) {
+  final Object? json = JsonEdit.decode(text);
+  final Object? deps = json is Map<String, Object?>
+      ? json['dependencies']
+      : null;
+  return deps is Map<String, Object?> ? deps[package] : null;
+}
+
+List<Object?>? _profileBundles(String? text) {
+  final Object? json = JsonEdit.decode(text);
+  final Object? dsh = json is Map<String, Object?> ? json['dsh'] : null;
+  final Object? profile = dsh is Map<String, Object?> ? dsh['profile'] : null;
+  final Object? bundles = profile is Map<String, Object?>
+      ? profile['bundles']
+      : null;
+  return bundles is List<Object?> ? bundles : null;
+}
+
+String? _addProfileBundle(String? text, String package, String spec) {
+  final Object? current = _profileDependency(text, package);
+  if (current != null && current != spec) {
+    throw FormatException('It already depends on $package ($current).');
+  }
+  final List<Object?>? bundles = _profileBundles(text);
+  if (bundles == null) {
+    throw const FormatException(
+      'It has no dsh.profile.bundles list; start the profile once first.',
+    );
+  }
+  String? next = current == spec
+      ? text
+      : JsonEdit.set(text, <String>['dependencies', package], spec);
+  if (!bundles.contains(package)) {
+    next = JsonEdit.set(
+      next,
+      <String>['dsh', 'profile', 'bundles'],
+      <Object?>[...bundles, package],
+    );
+  }
+  return next;
+}
+
+String? _removeProfileBundle(String? text, String package, String spec) {
+  if (_profileDependency(text, package) != spec) return text;
+  String? next = JsonEdit.remove(text, <String>['dependencies', package]);
+  final List<Object?>? bundles = _profileBundles(next);
+  if (bundles != null && bundles.contains(package)) {
+    next = JsonEdit.set(
+      next,
+      <String>['dsh', 'profile', 'bundles'],
+      <Object?>[
+        for (final Object? b in bundles)
+          if (b != package) b,
+      ],
+    );
+  }
+  return next;
 }
 
 /// The product's prompt files, each `<name>.md` with a front matter that

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.5.0 (2026-11-12)
+
+### Added
+
+- Built-in client `dsh` (DeepSeek Harness): detected by the `dsh` command
+  or `{DSH_HOME}/profiles` (`DSH_HOME`, default `~/.dsh`). Skills go to
+  `{DSH_HOME}/skills`; the product's plugin bundle is copied to
+  `{DSH_HOME}/plugins/<product>` and registered in every profile. A DSH
+  bundle carries its own MCP entry, so there is no MCP file component.
+- Extension targets: `plugins.profiles` names a directory of DeepSeek
+  Harness-style profiles. The installed plugin (an npm package named in its
+  `package.json`) is added to each profile with a `package.json` as a
+  `link:` dependency, a `dsh.profile.bundles` entry and the
+  `node_modules/<package>` link (a junction on Windows), as
+  `dsh plugin --profile <name> add link:<dir>` does. A profile without a
+  bundle list, or one that already depends on that name otherwise, is
+  reported and left as it is; remove takes back only the product's own
+  entries and links, before the plugin directory.
+
+### Changed
+
+- A component's status combines all of its parts (files, directories and
+  links) into one entry; a blocked component is one `conflict` entry
+  instead of two.
+
 ## 0.4.1 (2026-11-08)
 
 ### Changed
