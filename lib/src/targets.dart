@@ -52,6 +52,37 @@ const Map<String, Map<String, Object?>> builtinInstallTargets =
           },
         ],
       },
+      'chengxiaobang': <String, Object?>{
+        'name': 'Chengxiaobang (程小帮)',
+        'home': <String, Object?>{
+          'env': 'CHENGXIAOBANG_HOME',
+          'default': '~/.chengxiaobang',
+        },
+        'detect': <Object?>[
+          <String, Object?>{'path': '{home}'},
+        ],
+        'mcp': <String, Object?>{
+          'file': '{home}/mcp.json',
+          'format': 'mcp-servers-json',
+        },
+        'hooks': <String, Object?>{
+          'file': '{home}/hooks.json',
+          'format': 'chengxiaobang-hooks',
+          'events': <String, String>{
+            'sessionStart': 'SessionStart',
+            'userPromptSubmit': 'UserPromptSubmit',
+            'stop': 'Stop',
+          },
+        },
+        'skills': <String, Object?>{'dir': '{home}/skills'},
+        'afterInstall': <Object?>[
+          <String, Object?>{
+            'code': 'new_session',
+            'message':
+                'Start a new Chengxiaobang conversation to load MCP and hooks.',
+          },
+        ],
+      },
       'claude-desktop': <String, Object?>{
         'name': 'Claude Desktop',
         'os': <String>['macos', 'windows'],
@@ -262,6 +293,7 @@ const Set<String> mcpFormats = <String>{
   'codex-toml',
 };
 const Set<String> hookFormats = <String>{
+  'chengxiaobang-hooks',
   'claude-hooks',
   'codex-hooks',
   'cursor-hooks',

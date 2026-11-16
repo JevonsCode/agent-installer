@@ -153,8 +153,12 @@ installer.apply(['claude-code']);             // 用户确认后
 
 ## 内置客户端
 
+程小帮首次启动创建 `~/.chengxiaobang`（或 `CHENGXIAOBANG_HOME`）后即可检测。MCP、扁平生命周期 Hook 和 Skills 统一走 plan/apply/status/remove；保留已有 Hook 和 MCP。全局 Hook 开关关闭时会提示用户在客户端开启，不会自动覆盖该设置。
+
+
 | ID | MCP | Hook | 说明文件 | Skills | 其他 |
 | --- | --- | --- | --- | --- | --- |
+| `chengxiaobang` | `~/.chengxiaobang/mcp.json` | `~/.chengxiaobang/hooks.json` | — | `~/.chengxiaobang/skills` | `CHENGXIAOBANG_HOME` |
 | `claude-code` | `~/.claude.json` | `~/.claude/settings.json` | `~/.claude/CLAUDE.md` | `~/.claude/skills` | 权限白名单 |
 | `codex` | `{CODEX_HOME}/config.toml` | `hooks.json`，或 `config.toml` 中已有 Hook 表时写在那里 | `AGENTS.md`（`AGENTS.override.md` 有内容时写它） | `~/.agents/skills` | prompts 在 `{CODEX_HOME}/prompts` |
 | `cursor` | `~/.cursor/mcp.json` | `~/.cursor/hooks.json` | | `~/.cursor/skills` | |

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add Chengxiaobang detection, MCP/skills installation and flat lifecycle hooks with ownership-preserving refresh and removal.
+
 ## 0.5.1 (2026-11-12)
 
 ### Fixed

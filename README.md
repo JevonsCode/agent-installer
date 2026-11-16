@@ -183,8 +183,12 @@ The full output is described in [result.schema.json](docs/result.schema.json).
 
 ## Built-in clients
 
+Chengxiaobang is detected after its first launch creates `~/.chengxiaobang` (or `CHENGXIAOBANG_HOME`). Its MCP, flat lifecycle hooks and skills use the standard plan/apply/status/remove flow. Existing hooks and MCP servers are preserved; a globally disabled hooks switch requires the user to enable hooks in the client.
+
+
 | ID | MCP | Hook | Instructions | Skills | Other |
 | --- | --- | --- | --- | --- | --- |
+| `chengxiaobang` | `~/.chengxiaobang/mcp.json` | `~/.chengxiaobang/hooks.json` | — | `~/.chengxiaobang/skills` | `CHENGXIAOBANG_HOME` |
 | `claude-code` | `~/.claude.json` | `~/.claude/settings.json` | `~/.claude/CLAUDE.md` | `~/.claude/skills` | permission allowlist |
 | `codex` | `{CODEX_HOME}/config.toml` | `hooks.json`, or written into the existing hook table in `config.toml` if there is one | `AGENTS.md` (`AGENTS.override.md` if it has content) | `~/.agents/skills` | prompts in `{CODEX_HOME}/prompts` |
 | `cursor` | `~/.cursor/mcp.json` | `~/.cursor/hooks.json` | | `~/.cursor/skills` | |

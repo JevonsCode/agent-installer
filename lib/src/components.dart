@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'environment.dart';
+import 'chengxiaobang_hooks.dart';
 import 'json_edit.dart';
 import 'manifest.dart';
 import 'targets.dart';
@@ -710,6 +711,28 @@ void _hookParts(
   String jsonPath,
   InstallEnvironment env,
 ) {
+  if (file.format == 'chengxiaobang-hooks') {
+    final desired = <Map<String, Object?>>[
+      for (final h in hooks)
+        <String, Object?>{
+          'id': '${product.product}-${target.hookEvents[h.event]}',
+          'event': target.hookEvents[h.event],
+          'command': shellCommand(h.command, windows: env.windows),
+          if (h.timeoutSec != null) 'timeoutSeconds': h.timeoutSec,
+          'enabled': true,
+        },
+    ];
+    work.text.add(
+      TextPart(
+        'hooks',
+        jsonPath,
+        (text) => ChengxiaobangHooks.set(text, desired, product.isOurHook),
+        (text) => ChengxiaobangHooks.set(text, const [], product.isOurHook),
+        (text) => ChengxiaobangHooks.has(text, product.isOurHook),
+      ),
+    );
+    return;
+  }
   final bool cursor = file.format == 'cursor-hooks';
   // Codex runs hook commands with PowerShell on Windows.
   final bool powerShell = env.windows && file.format == 'codex-hooks';
